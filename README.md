@@ -2,6 +2,14 @@
 
 A web application for recording and tracking medication predispensing errors using Google Sheets as a database.
 
+## ⚠️ IMPORTANT: Before Using This Application
+
+**This repository contains template code with placeholder credentials.** 
+
+🔒 **You MUST configure your own Google Sheets and API credentials before use.**
+
+👉 **See [ENVIRONMENT_CONFIG.md](ENVIRONMENT_CONFIG.md) for setup instructions.**
+
 ## Features
 
 - **Error Reporting Form**: Comprehensive form to record predispensing errors with all relevant details

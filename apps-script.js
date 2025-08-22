@@ -1,10 +1,9 @@
 // Google Apps Script Code สำหรับ Predispensing Error Recorder
-// วิธีใช้: คัดลอกโค้ดนี้ไปใส่ใน Google Apps Script
-// Refactored: ลดการซ้ำของ setHeaders / createTextOutput ด้วย helper jsonResponse()
+// วิธีใช้: คัดลอกโค้ดนี้ไปใส่ใน Google Apps Script และ Deploy เป็น Web App
+// การตั้งค่า Deploy: Execute as "Me", Who has access "Anyone"
 
-// หมายเหตุ: Apps Script (ContentService) ไม่รองรับ setHeaders สำหรับกำหนด CORS เอง
-// เพื่อลด error ใช้เพียง setMimeType(JSON) และหลีกเลี่ยงการส่ง custom headers
-// (เราใช้ FormData ฝั่ง client เพื่อลด preflight จึงไม่จำเป็นต้องตั้ง CORS header เอง)
+// ⚠️ สำคัญ: ต้องแทนที่ SPREADSHEET_ID ด้วย ID จริงของ Google Sheets
+const SPREADSHEET_ID = '1QDIxEXCVLiA7oijXN15N2ZH2LzPtHDecbqolYGs9Ldk';
 
 /**
  * สร้าง JSON response พร้อม headers มาตรฐาน
@@ -17,11 +16,32 @@ function jsonResponse(obj) {
 }
 
 function doGet(e) {
-  return jsonResponse({
-    status: 'OK',
-    message: 'Predispensing Error Recorder API is working',
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const action = e.parameter.action;
+    
+    if (action === 'getUsers') {
+      const userCode = e.parameter.userCode;
+      const password = e.parameter.password;
+      return getUsersFromSheet(userCode, password);
+    } else if (action === 'getDrugs') {
+      return getDrugsFromSheet();
+    } else if (action === 'getErrors') {
+      return getErrorsFromSheet();
+    }
+    
+    return jsonResponse({
+      status: 'OK',
+      message: 'Predispensing Error Recorder API is working',
+      timestamp: new Date().toISOString(),
+      availableActions: ['getUsers', 'getDrugs', 'getErrors']
+    });
+    
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'GET request error: ' + error.toString()
+    });
+  }
 }
 
 // Handle OPTIONS request for CORS preflight
@@ -34,7 +54,7 @@ function doPost(e) {
   try {
     // Handle CORS preflight
     if (e.parameter && e.parameter.method === 'OPTIONS') {
-  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
+      return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
     }
 
     let data;
@@ -50,22 +70,27 @@ function doPost(e) {
       // Form submission with payload
       data = JSON.parse(e.parameter.payload);
     } else {
-  return jsonResponse({ error: 'No data received' });
+      return jsonResponse({ error: 'No data received' });
     }
     
-    const spreadsheet = SpreadsheetApp.openById('1QDIxEXCVLiA7oijXN15N2ZH2LzPtHDecbqolYGs9Ldk');
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    
+    // Handle user authentication
+    if (data.action === 'getUsers') {
+      return getUsersFromSheet(data.userCode, data.password);
+    }
     
     // Handle drug list operations
     if (data.action === 'addDrug') {
-  return handleDrugOperation(spreadsheet, data);
+      return handleDrugOperation(spreadsheet, data);
     }
     
     // Handle get drug list
     if (data.action === 'getDrugList') {
-  return getDrugList(spreadsheet, data.drugSheetName || 'Drug_List');
+      return getDrugList(spreadsheet, data.drugSheetName || 'Drug_List');
     }
     
-    // Handle error reporting
+    // Handle error reporting (default action)
     const sheet = spreadsheet.getSheetByName(data.sheetName || 'Predispensing_Errors');
     
     if (!sheet) {
@@ -120,9 +145,85 @@ function doPost(e) {
   }
 }
 
-// ฟังก์ชันทดสอบ (ไม่บังคับ)
-function testFunction() {
-  Logger.log('Google Apps Script is working!');
+// Get drugs from Drug_List sheet
+function getDrugsFromSheet() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const drugSheet = spreadsheet.getSheetByName('Drug_List');
+    
+    if (!drugSheet) {
+      return jsonResponse({
+        success: true,
+        data: [],
+        message: 'ไม่พบ Sheet "Drug_List" ระบบจะสร้างเมื่อมีการเพิ่มยาใหม่'
+      });
+    }
+    
+    const range = drugSheet.getDataRange();
+    const values = range.getValues();
+    
+    if (values.length <= 1) {
+      return jsonResponse({
+        success: true,
+        data: [],
+        message: 'ไม่มีข้อมูลยาใน Sheet'
+      });
+    }
+    
+    // Skip header row and format data
+    const drugs = values.slice(1).map(row => ({
+      code: row[0] || '',
+      name: row[1] || '',
+      group: row[2] || '',
+      had: row[3] || '',
+      status: row[4] === true || row[4] === 'TRUE' || row[4] === 'true'
+    })).filter(drug => drug.code && drug.status);
+    
+    return jsonResponse({
+      success: true,
+      data: drugs,
+      count: drugs.length,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Error getting drug list: ' + error.toString()
+    });
+  }
+}
+
+// Get errors from Predispensing_Errors sheet
+function getErrorsFromSheet() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const errorSheet = spreadsheet.getSheetByName('Predispensing_Errors');
+    
+    if (!errorSheet) {
+      return jsonResponse({
+        success: true,
+        data: [],
+        message: 'ไม่พบ Sheet "Predispensing_Errors" ระบบจะสร้างเมื่อมีการบันทึกข้อผิดพลาดครั้งแรก'
+      });
+    }
+    
+    const range = errorSheet.getDataRange();
+    const values = range.getValues();
+    
+    return jsonResponse({
+      success: true,
+      data: values,
+      count: values.length,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: 'Error getting error data: ' + error.toString()
+    });
+  }
 }
 
 // Handle drug list operations
@@ -221,6 +322,82 @@ function getDrugList(spreadsheet, drugSheetName = 'Drug_List') {
   } catch (error) {
     return jsonResponse({
       error: 'Error getting drug list: ' + error.toString()
+    });
+  }
+}
+
+// Get users from Users sheet for authentication (ใช้ข้อมูลจริงจาก Google Sheets)
+function getUsersFromSheet(userCode, password) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const userSheet = spreadsheet.getSheetByName('Users');
+    
+    if (!userSheet) {
+      return jsonResponse({
+        success: false,
+        error: 'ไม่พบ Sheet ชื่อ "Users" กรุณาสร้าง Sheet และนำเข้าข้อมูลจาก sample_users.csv'
+      });
+    }
+    
+    // Get all data from the sheet
+    const range = userSheet.getDataRange();
+    const values = range.getValues();
+    
+    if (values.length <= 1) {
+      return jsonResponse({
+        success: false,
+        error: 'ไม่พบข้อมูลผู้ใช้ใน Sheet "Users" กรุณานำเข้าข้อมูลจาก sample_users.csv'
+      });
+    }
+    
+    // Skip header row and format data
+    // Expected columns: PS_Code, ID_13, Name, Group, Level, Email, Password, Status
+    let users = values.slice(1).map(row => ({
+      psCode: row[0] ? row[0].toString().trim() : '',
+      id13: row[1] ? row[1].toString().trim() : '',
+      name: row[2] ? row[2].toString().trim() : '',
+      group: row[3] ? row[3].toString().trim() : '',
+      level: row[4] ? row[4].toString().trim() : '',
+      email: row[5] ? row[5].toString().trim() : '',
+      password: row[6] ? row[6].toString().trim() : '',
+      status: row[7] === true || row[7] === 'TRUE' || row[7] === 'true'
+    })).filter(user => 
+      user.psCode && // ต้องมี PS Code
+      user.status === true // และสถานะเป็น active
+    );
+    
+    // กรองผู้ใช้ตาม userCode และ password ถ้าระบุมา
+    if (userCode && password) {
+      users = users.filter(user => 
+        (user.psCode.toLowerCase() === userCode.toLowerCase() || 
+         user.id13.toLowerCase() === userCode.toLowerCase()) &&
+        user.password === password
+      );
+    } else if (userCode) {
+      // ถ้าระบุแค่ userCode สำหรับ backward compatibility
+      users = users.filter(user => 
+        user.psCode.toLowerCase() === userCode.toLowerCase() || 
+        user.id13.toLowerCase() === userCode.toLowerCase()
+      );
+    }
+    
+    console.log(`ดึงข้อมูลผู้ใช้ได้ ${users.length} คน จาก Google Sheets`);
+    
+    return jsonResponse({
+      success: true,
+      users: users, // ใช้ key "users" ตาม client-side expectation
+      totalUsers: users.length,
+      message: userCode ? 
+        `ค้นหาผู้ใช้สำหรับ ${userCode}: พบ ${users.length} คน` :
+        `พบข้อมูลผู้ใช้ ${users.length} คนจาก Google Sheets`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error in getUsersFromSheet:', error);
+    return jsonResponse({
+      success: false,
+      error: 'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้: ' + error.toString()
     });
   }
 }
