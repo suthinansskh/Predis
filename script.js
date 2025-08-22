@@ -1,12 +1,296 @@
 // Global variables
+let globalDrugList = [];
+let globalUsersData = [];
+let currentUser = null;
+
 let googleSheetsConfig = {
     apiKey: 'AIzaSyCF-pWr13N_s7Iu868nSa6cPiMxDduuJ1k',
     spreadsheetId: '1QDIxEXCVLiA7oijXN15N2ZH2LzPtHDecbqolYGs9Ldk',
     sheetName: 'Predispensing_Errors',
     userSheetName: 'Users',
     drugSheetName: 'Drug_List',
-    webAppUrl: '' // Google Apps Script Web App URL for writing data
+    webAppUrl: 'https://script.google.com/macros/s/AKfycbzMfgXu9oscmYS_wXPX6rpdJeeZTj6w4uFxB_rPnYC8XVd6amwGGKHibHk5Iw2fw72E/exec' // ใส่ Google Apps Script Web App URL ที่ได้จาก Deploy
 };
+
+// Authentication and User Management
+function checkAuthentication() {
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+        currentUser = JSON.parse(storedUser);
+        showMainApp();
+        return true;
+    }
+    showLoginPage();
+    return false;
+}
+
+function showLoginPage() {
+    document.getElementById('login').style.display = 'flex';
+    document.getElementById('mainApp').style.display = 'none';
+}
+
+function showMainApp() {
+    console.log('=== showMainApp called ===');
+    console.log('currentUser at showMainApp:', currentUser);
+    
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    
+    // Update user display
+    const userNameEl = document.getElementById('userName');
+    if (userNameEl && currentUser) {
+        userNameEl.textContent = currentUser.name || currentUser.psCode;
+        console.log('Updated userName element to:', userNameEl.textContent);
+    }
+    
+    // Wait a bit for DOM to be ready then update reporter field
+    setTimeout(() => {
+        console.log('Calling updateReporterField from showMainApp');
+        updateReporterField();
+    }, 100);
+    
+    // Update dashboard user info
+    updateDashboardUserInfo();
+    
+    // Load initial data
+    loadData();
+}
+
+function updateReporterField() {
+    console.log('=== updateReporterField called ===');
+    console.log('currentUser:', currentUser);
+    
+    const reporterEl = document.getElementById('reporter');
+    console.log('Reporter element found:', !!reporterEl);
+    
+    if (!reporterEl) {
+        console.error('Reporter element not found in DOM!');
+        // Try to find it with query selector
+        const altReporter = document.querySelector('input[name="reporter"]');
+        console.log('Alternative reporter element found:', !!altReporter);
+        return;
+    }
+    
+    if (currentUser) {
+        // รูปแบบ: ชื่อ-นามสกุล (PS Code) - กลุ่ม/ระดับ
+        const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
+        reporterEl.value = reporterValue;
+        console.log('Reporter field updated to:', reporterValue);
+        console.log('Actual field value after update:', reporterEl.value);
+        
+        // Force visual update
+        reporterEl.dispatchEvent(new Event('input', { bubbles: true }));
+        reporterEl.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+        // ถ้าไม่มี currentUser ให้แสดงข้อความรอ
+        reporterEl.value = 'กรุณาเข้าสู่ระบบก่อนใช้งาน';
+        console.log('No currentUser found, showing login message');
+    }
+}
+
+function updateDashboardUserInfo() {
+    const currentUserDisplay = document.getElementById('currentUserDisplay');
+    const currentGroupDisplay = document.getElementById('currentGroupDisplay');
+    
+    if (currentUserDisplay && currentUser) {
+        currentUserDisplay.textContent = currentUser.name;
+    }
+    
+    if (currentGroupDisplay && currentUser) {
+        currentGroupDisplay.textContent = currentUser.group || 'ไม่ระบุ';
+    }
+    
+    // Set default filter to show current user's reports
+    const filterUser = document.getElementById('filterUser');
+    if (filterUser && currentUser) {
+        // Set default to current user for regular users, all for admins
+        if (currentUser.level === 'admin' || currentUser.level === 'supervisor') {
+            filterUser.value = '';  // Show all for admin/supervisor
+        } else {
+            filterUser.value = 'currentUser';  // Show only user's reports for regular users
+        }
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const userCode = formData.get('userCode').trim();
+    const password = formData.get('password').trim();
+    
+    if (!userCode) {
+        showNotification('กรุณาใส่ PS Code หรือ ID13', 'error');
+        return;
+    }
+    
+    if (!password) {
+        showNotification('กรุณาใส่รหัสผ่าน', 'error');
+        return;
+    }
+    
+    // Show loading
+    const loginBtn = event.target.querySelector('.login-btn');
+    const originalText = loginBtn.innerHTML;
+    loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังตรวจสอบ...';
+    loginBtn.disabled = true;
+    
+    try {
+        const user = await authenticateUser(userCode, password);
+        console.log('=== Login Result ===');
+        console.log('Authenticated user:', user);
+        
+        if (user) {
+            currentUser = user;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            console.log('currentUser set to:', currentUser);
+            showNotification(`ยินดีต้อนรับ ${user.name} (${user.group} - ${user.level})`, 'success');
+            showMainApp();
+        } else {
+            showNotification('ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบข้อมูลอีกครั้ง', 'error');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        showNotification('เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + error.message, 'error');
+    } finally {
+        loginBtn.innerHTML = originalText;
+        loginBtn.disabled = false;
+    }
+}
+
+async function authenticateUser(userCode, password) {
+    // ตรวจสอบว่าตั้งค่า Google Apps Script หรือยัง
+    if (!googleSheetsConfig.webAppUrl || googleSheetsConfig.webAppUrl.trim() === '') {
+        // Demo Mode: ใช้ข้อมูลผู้ใช้ตัวอย่างตามข้อมูลจริง
+        console.log('Demo Mode: ตรวจสอบผู้ใช้และรหัสผ่าน', userCode);
+        
+        const demoUsers = [
+            // เภสัชกร
+            { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
+            { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+            { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+            { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+            { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
+            { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '15091985', status: true },
+            { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
+            // เจ้าพนักงานเภสัชกรรม
+            { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+            { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+            { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
+            // Admin สำหรับทดสอบ
+            { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
+        ];
+        
+        const user = demoUsers.find(u => 
+            (u.psCode.toLowerCase() === userCode.toLowerCase() ||
+             u.id13.toLowerCase() === userCode.toLowerCase()) &&
+            u.password === password
+        );
+        
+        if (user) {
+            console.log('Demo Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
+            return user;
+        } else {
+            console.log('Demo Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+            return null;
+        }
+    } else {
+        // Production Mode: ใช้ Google Apps Script เพื่อตรวจสอบผู้ใช้จากข้อมูลจริง
+        try {
+            console.log('Production Mode: ตรวจสอบผู้ใช้และรหัสผ่านจาก Google Sheets', userCode);
+            
+            // ใช้ GET request เพื่อหลีกเลี่ยง CORS preflight
+            const url = new URL(googleSheetsConfig.webAppUrl);
+            url.searchParams.append('action', 'getUsers');
+            url.searchParams.append('userCode', userCode);
+            url.searchParams.append('password', password);
+            
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้');
+            }
+            
+            // ค้นหาผู้ใช้จากข้อมูลจริงและตรวจสอบรหัสผ่าน
+            const user = data.users.find(u => 
+                ((u.psCode && u.psCode.toLowerCase() === userCode.toLowerCase()) ||
+                 (u.id13 && u.id13.toLowerCase() === userCode.toLowerCase())) &&
+                u.password === password
+            );
+            
+            // ตรวจสอบสถานะการใช้งาน
+            if (user && user.status === false) {
+                throw new Error('บัญชีผู้ใช้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
+            }
+            
+            if (user) {
+                console.log('Production Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
+                return user;
+            } else {
+                console.log('Production Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                return null;
+            }
+            
+        } catch (error) {
+            console.error('Production Mode Error:', error);
+            
+            // Check if it's a CORS or network error and show appropriate message
+            if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+                console.log('CORS error detected, falling back to Demo Mode');
+                showNotification('⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้ (CORS Error) กำลังใช้โหมดทดสอบ', 'warning');
+            } else {
+                console.log('Fallback to Demo Mode:', error.message);
+                showNotification('ไม่สามารถเชื่อมต่อ Google Sheets ได้ กำลังใช้โหมดทดสอบ', 'warning');
+            }
+            
+            const demoUsers = [
+                // เภสัชกร
+                { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
+                { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+                { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+                { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+                { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
+                { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '15091985', status: true },
+                { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
+                // เจ้าพนักงานเภสัชกรรม
+                { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+                { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+                { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
+                // Admin สำหรับทดสอบ
+                { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
+            ];
+            
+            const user = demoUsers.find(u => 
+                (u.psCode.toLowerCase() === userCode.toLowerCase() ||
+                 u.id13.toLowerCase() === userCode.toLowerCase()) &&
+                u.password === password
+            );
+            
+            if (user) {
+                console.log('Fallback Demo Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
+                return user;
+            } else {
+                console.log('Fallback Demo Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                return null;
+            }
+        }
+    }
+}
+function logout() {
+    currentUser = null;
+    localStorage.removeItem('currentUser');
+    showLoginPage();
+    showNotification('ออกจากระบบเรียบร้อย', 'info');
+}
 
 let drugListData = [];
 
@@ -64,6 +348,12 @@ function showSection(sectionName) {
     // Add active class to clicked nav button
     event.target.classList.add('active');
     
+    // Update reporter field when showing form section
+    if (sectionName === 'form') {
+        console.log('Showing form section, updating reporter field');
+        setTimeout(() => updateReporterField(), 100);
+    }
+    
     // Load specific section data
     if (sectionName === 'druglist') {
         loadDrugList();
@@ -87,8 +377,8 @@ function initializeForm() {
     // Generate Report ID
     generateReportId();
     
-    // Load users for reporter dropdown
-    populateReporterDropdown();
+    // Populate process dropdown and setup error options
+    populateProcessSelect();
     
     // Load drug list for drug dropdowns
     loadDrugList();
@@ -100,15 +390,38 @@ function initializeForm() {
 // รายการกระบวนการ (สามารถปรับแก้หรือเพิ่มได้ง่าย)
 const PROCESS_OPTIONS = [
     'จัดยา',
-    'เตรียมยา',
-    'ตรวจสอบ',
     'ลงข้อมูล',
-    'จัดเก็บ',
+    'เตรียมยา',
     'คิดค่าใช้จ่าย',
-    'ส่งมอบ',
-    'รับคืน',
-    'ทำลาย'
+    'จัดเก็บ',
+    'จัดส่ง'
 ];
+
+// รายการข้อผิดพลาดตามกระบวนการ
+const errorOptionsByProcess = {
+    'จัดยา': [
+        'ไม่ติดฉลากยา', 'จัดผิดขนาด', 'จัดผิดจำนวน', 'จัดไม่ครบชนิด', 'จัดผิดชนิด', 'จัดผิดรูปแบบ', 'จัดผิดคน',
+        'ลืมเตรียมยา', 'ผลิตยาไม่ทัน', 'ติดฉลกายา prepack ผิดชนิด', 'ตรวจพบยาหมดอายุในจุดจ่าย',
+        'ไม่ได้หยุดยา/นำยาออก กรณีแพทย์สั่ง off ยา', 'เก็บยาผิดตำแหน่ง', 'ไม่ได้เตรียม set IV เพื่อยาเคมีบำบัด'
+    ],
+    'ลงข้อมูล': [
+        'key ผิดขนาด', 'key ผิดจำนวน', 'key ไม่ครบชนิด', 'key ผิดชนิด', 'key ผิดรูปแบบ', 'key ผิดคน', 'key ผิดตึก', 'key ผิดวิธีใช้',
+        'ลงข้อมูลก่อนเตรียมยาไม่ถูกต้อง', 'ไม่ได้ส่งการปรับปรุง order/stat', 'ไม่ได้อ่าน line ทำให้ไมไ่ด้เตรียมยา',
+        'ไม่ได้ลงค่าใช้จ่ายด้านยา(ไมไ่ด้คิดค่ายาหรือเวชภัณฑ์อื่นๆ)', 'คีย์สารละลายผิดขนาด ผิดชนิด', 'ไม่ได้หยุดยา/นำยาออก กรณีแพทย์สั่ง off ยา'
+    ],
+    'เตรียมยา': [
+        'ลืมเตรียมยา', 'ผลิตยาไม่ทัน', 'ไม่ได้เตรียม set IV เพื่อยาเคมีบำบัด', 'เตรียมยาผิดชนิด', 'เตรียมยาไม่ถูกต้อง', 'เตรียมยาไม่ครบ', 'ไม่ได้ off ยา', 'ดูดปริมาตรยาไม่ถูกต้อง'
+    ],
+    'คิดค่าใช้จ่าย': [
+        'ไม่ได้ลงค่าใช้จ่ายด้านยา(ไมไ่ด้คิดค่ายาหรือเวชภัณฑ์อื่นๆ)', 'ไม่ได้ย้ายราคา คิดค่าใช้จ่าย', 'ไม่ได้ส่งชำระเงิน'
+    ],
+    'จัดเก็บ': [
+        'เก็บยาผิดตำแหน่ง', 'ตรวจพบยาหมดอายุในจุดจ่าย'
+    ],
+    'จัดส่ง': [
+        'ส่งยาผิดตึก', 'ส่งยาไม่ครบ', 'ส่งยาใส่กล่องเวลาไม่ถูกต้อง', 'ยา/สารเคมีขาด', 'order ที่ส่งเตรียมไม่ตรงกับ PharMS'
+    ]
+};
 
 function populateProcessSelect() {
     const sel = document.getElementById('process');
@@ -116,6 +429,35 @@ function populateProcessSelect() {
     sel.innerHTML = '<option value="">เลือกกระบวนการ</option>' + PROCESS_OPTIONS
         .map(p => `<option value="${p}">${p}</option>`)
         .join('');
+    
+    // Add event listener for process change
+    sel.addEventListener('change', function() {
+        updateErrorOptions(this.value);
+    });
+}
+
+// อัปเดตตัวเลือกข้อผิดพลาดตามกระบวนการที่เลือก
+function updateErrorOptions(selectedProcess) {
+    console.log('updateErrorOptions called with:', selectedProcess);
+    const errorSelect = document.getElementById('errorDetail');
+    if (!errorSelect) {
+        console.log('errorDetail select not found');
+        return;
+    }
+    
+    // เคลียร์ตัวเลือกเดิม
+    errorSelect.innerHTML = '<option value="">เลือกข้อผิดพลาด</option>';
+    
+    if (selectedProcess && errorOptionsByProcess[selectedProcess]) {
+        // เพิ่มตัวเลือกข้อผิดพลาดตามกระบวนการ
+        const options = errorOptionsByProcess[selectedProcess]
+            .map(error => `<option value="${error}">${error}</option>`)
+            .join('');
+        errorSelect.innerHTML += options;
+        console.log(`Added ${errorOptionsByProcess[selectedProcess].length} error options for ${selectedProcess}`);
+    } else {
+        console.log('No error options found for process:', selectedProcess);
+    }
 }
 
 // Generate unique report ID
@@ -291,95 +633,6 @@ async function readFromGoogleSheet() {
     return data.values || [];
 }
 
-// Load users from Google Sheets
-async function loadUsers() {
-    if (!googleSheetsConfig.apiKey || !googleSheetsConfig.spreadsheetId) {
-        console.warn('Google Sheets configuration incomplete');
-        return [];
-    }
-
-    try {
-        const range = `${googleSheetsConfig.userSheetName}!A:H`;
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${googleSheetsConfig.spreadsheetId}/values/${range}?key=${googleSheetsConfig.apiKey}`;
-
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                console.error('403 Forbidden: Check if your Google Sheet is publicly accessible and API key has proper permissions');
-                showNotification('ไม่สามารถเข้าถึง Google Sheets ได้ กรุณาตรวจสอบสิทธิ์การเข้าถึง', 'error');
-            } else if (response.status === 404) {
-                console.error('404 Not Found: Sheet not found or wrong sheet name');
-                showNotification('ไม่พบ Sheet หรือชื่อ Sheet ไม่ถูกต้อง', 'error');
-            } else {
-                console.error(`HTTP ${response.status}: Failed to load users from Google Sheets`);
-                showNotification(`เกิดข้อผิดพลาด HTTP ${response.status}`, 'error');
-            }
-            return [];
-        }
-
-        const data = await response.json();
-        console.log('Users loaded successfully:', data.values?.length || 0, 'rows');
-        return data.values || [];
-    } catch (error) {
-        console.error('Error loading users:', error);
-        showNotification('เกิดข้อผิดพลาดในการโหลดข้อมูลผู้ใช้', 'error');
-        return [];
-    }
-}
-
-// Populate reporter dropdown with users
-async function populateReporterDropdown() {
-    try {
-        const users = await loadUsers();
-        const reporterSelect = document.getElementById('reporter');
-        
-        // Clear existing options except the first one
-        while (reporterSelect.children.length > 1) {
-            reporterSelect.removeChild(reporterSelect.lastChild);
-        }
-
-        if (users.length > 1) { // Skip header row
-            const activeUsers = users.slice(1).filter(user => user[7] === 'TRUE'); // Filter active users (status = TRUE)
-            
-            if (activeUsers.length === 0) {
-                console.warn('No active users found');
-                showNotification('ไม่พบผู้ใช้ที่ active ใน Sheet Users', 'info');
-                return;
-            }
-            
-            activeUsers.forEach(user => {
-                const psCode = user[0] || '';
-                const fullName = user[2] || '';
-                if (psCode && fullName) {
-                    const option = document.createElement('option');
-                    option.value = `${fullName} (${psCode})`;
-                    option.textContent = `${fullName} (${psCode})`;
-                    
-                    // Set default selection for P13
-                    if (psCode === 'P13') {
-                        option.selected = true;
-                    }
-                    
-                    reporterSelect.appendChild(option);
-                }
-            });
-            
-            console.log(`Loaded ${activeUsers.length} active users`);
-            showNotification(`โหลดรายชื่อผู้ใช้แล้ว ${activeUsers.length} คน`, 'success');
-        } else if (users.length === 1) {
-            console.warn('Only header row found in Users sheet');
-            showNotification('พบเฉพาะหัวตารางใน Sheet Users กรุณาเพิ่มข้อมูลผู้ใช้', 'info');
-        } else {
-            console.warn('Users sheet is empty');
-            showNotification('Sheet Users ว่างเปล่า กรุณาเพิ่มข้อมูลผู้ใช้', 'info');
-        }
-    } catch (error) {
-        console.error('Error populating reporter dropdown:', error);
-        showNotification('เกิดข้อผิดพลาดในการโหลดรายชื่อผู้รายงาน', 'error');
-    }
-}
-
 // Populate drug dropdowns for correct and incorrect items
 function populateDrugDropdowns() {
     const correctItemList = document.getElementById('correctItemList');
@@ -543,9 +796,6 @@ function handleSettingsSubmit(event) {
     
     saveConfig();
     showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success');
-    
-    // Reload users when settings are saved
-    populateReporterDropdown();
 }
 
 // Dashboard functions
@@ -567,8 +817,14 @@ async function loadData() {
         const hasHeader = data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('timestamp');
         const errorData = hasHeader ? data.slice(1) : data;
         
-        updateDashboard(errorData);
-        populateTable(errorData);
+        // Apply user-based filtering
+        const filteredData = applyUserFilter(errorData);
+        
+        updateDashboard(errorData, filteredData);
+        populateTable(filteredData);
+        
+        // Update dashboard user info
+        updateDashboardUserInfo();
         
         showNotification('โหลดข้อมูลเรียบร้อยแล้ว!', 'success');
         
@@ -582,13 +838,80 @@ async function loadData() {
     }
 }
 
-function updateDashboard(data) {
-    console.log('Updating dashboard with data:', data);
+// Apply user-based filtering based on current user and filter settings
+function applyUserFilter(data) {
+    if (!currentUser || !data) return data;
     
-    if (!data || data.length === 0) {
+    const filterUser = document.getElementById('filterUser').value;
+    const filterPeriod = document.getElementById('filterPeriod').value;
+    
+    let filteredData = data;
+    
+    // Apply user filter
+    if (filterUser === 'currentUser') {
+        // Show only current user's reports
+        filteredData = filteredData.filter(row => {
+            const reporter = (row[11] || '').toString().trim(); // ผู้รายงาน in column 11
+            return reporter === currentUser.name || 
+                   reporter.includes(currentUser.name) ||
+                   reporter === currentUser.psCode ||
+                   reporter === currentUser.id13;
+        });
+    } else if (filterUser === 'myGroup') {
+        // Show only reports from user's group
+        filteredData = filteredData.filter(row => {
+            const reporter = (row[11] || '').toString().trim();
+            // This would need a lookup to user database to check group
+            // For now, assume reporter name contains group info or use a simplified approach
+            return reporter.includes(currentUser.group) || 
+                   reporter === currentUser.name ||
+                   (currentUser.level === 'admin'); // Admin can see all
+        });
+    }
+    
+    // Apply period filter
+    if (filterPeriod) {
+        const now = new Date();
+        let startDate;
+        
+        switch (filterPeriod) {
+            case 'today':
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                break;
+            case 'week':
+                startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                break;
+            case 'month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+            case 'quarter':
+                startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                break;
+        }
+        
+        if (startDate) {
+            filteredData = filteredData.filter(row => {
+                try {
+                    const rowDate = new Date(row[0]);
+                    return !isNaN(rowDate.getTime()) && rowDate >= startDate;
+                } catch (e) {
+                    return false;
+                }
+            });
+        }
+    }
+    
+    return filteredData;
+}
+
+function updateDashboard(allData, filteredData) {
+    console.log('Updating dashboard with all data:', allData?.length, 'filtered:', filteredData?.length);
+    
+    if (!allData || allData.length === 0) {
         document.getElementById('totalErrors').textContent = '0';
+        document.getElementById('myErrors').textContent = '0';
+        document.getElementById('groupErrors').textContent = '0';
         document.getElementById('monthlyErrors').textContent = '0';
-        document.getElementById('criticalErrors').textContent = '0';
         document.getElementById('weeklyErrors').textContent = '0';
         return;
     }
@@ -598,53 +921,84 @@ function updateDashboard(data) {
     const thisYear = now.getFullYear();
     const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+    let totalCount = 0;
+    let myCount = 0;
+    let groupCount = 0;
     let monthlyCount = 0;
-    let criticalCount = 0;
     let weeklyCount = 0;
-    let validDataCount = 0;
 
-    data.forEach((row, index) => {
-        // Skip header row and empty rows
+    // Process all data for total counts
+    allData.forEach((row, index) => {
         if (index === 0 || !row[0] || !row[1]) return;
         
         try {
             const errorDate = new Date(row[0]);
+            const reporter = (row[11] || '').toString().trim();
             
-            // Only process valid dates
             if (!isNaN(errorDate.getTime())) {
-                validDataCount++;
+                totalCount++;
                 
-                // Monthly count
+                // Count user's own reports
+                if (currentUser && (
+                    reporter === currentUser.name || 
+                    reporter.includes(currentUser.name) ||
+                    reporter === currentUser.psCode ||
+                    reporter === currentUser.id13)) {
+                    myCount++;
+                }
+                
+                // Count group reports (simplified - could be enhanced with user database lookup)
+                if (currentUser && (
+                    reporter.includes(currentUser.group) || 
+                    reporter === currentUser.name ||
+                    currentUser.level === 'admin')) {
+                    groupCount++;
+                }
+                
+                // Monthly count (from filtered data)
                 if (errorDate.getMonth() === thisMonth && errorDate.getFullYear() === thisYear) {
                     monthlyCount++;
                 }
                 
-                // Weekly count
+                // Weekly count (from filtered data)
                 if (errorDate >= lastWeek) {
                     weeklyCount++;
                 }
-            }
-            
-            // Critical errors - check different possible columns for severity
-            const errorType = (row[3] || '').toString().toLowerCase();
-            const location = (row[4] || '').toString().toLowerCase();
-            const description = (row[5] || '').toString().toLowerCase();
-            
-            // Consider certain error types or locations as critical
-            if (errorType.includes('ยาผิด') || errorType.includes('ขนาดผิด') ||
-                errorType.includes('ผู้ป่วยผิด') || errorType.includes('เส้นทางให้ผิด') ||
-                location.includes('ไอซียู') || location.includes('ห้องผ่าตัด') ||
-                description.includes('อันตราย') || description.includes('ร้ายแรง')) {
-                criticalCount++;
             }
         } catch (e) {
             console.warn('Error processing row:', e, row);
         }
     });
 
-    document.getElementById('totalErrors').textContent = validDataCount;
+    // Apply filter-specific counts for monthly and weekly (use filtered data)
+    if (filteredData && filteredData !== allData) {
+        monthlyCount = 0;
+        weeklyCount = 0;
+        
+        filteredData.forEach((row, index) => {
+            if (index === 0 || !row[0] || !row[1]) return;
+            
+            try {
+                const errorDate = new Date(row[0]);
+                
+                if (!isNaN(errorDate.getTime())) {
+                    if (errorDate.getMonth() === thisMonth && errorDate.getFullYear() === thisYear) {
+                        monthlyCount++;
+                    }
+                    if (errorDate >= lastWeek) {
+                        weeklyCount++;
+                    }
+                }
+            } catch (e) {
+                console.warn('Error processing filtered row:', e, row);
+            }
+        });
+    }
+
+    document.getElementById('totalErrors').textContent = totalCount;
+    document.getElementById('myErrors').textContent = myCount;
+    document.getElementById('groupErrors').textContent = groupCount;
     document.getElementById('monthlyErrors').textContent = monthlyCount;
-    document.getElementById('criticalErrors').textContent = criticalCount;
     document.getElementById('weeklyErrors').textContent = weeklyCount;
 }
 
@@ -686,31 +1040,26 @@ function populateTable(data) {
     const tableBody = document.getElementById('errorTableBody');
     
     if (!data || data.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="no-data">ไม่มีข้อมูล</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="no-data">ไม่มีข้อมูลที่ตรงกับตัวกรอง</td></tr>';
         return;
     }
 
-    const filterType = document.getElementById('filterType').value;
+    // Data is already filtered by applyUserFilter, so we just need to format it
+    let workingData = data;
     
     // Skip header row if exists
-    let workingData = data;
     if (data.length > 0 && Array.isArray(data[0]) && data[0][0] && 
         (data[0][0].toString().toLowerCase().includes('timestamp') || 
          data[0][0].toString().toLowerCase().includes('วันที่'))) {
         workingData = data.slice(1);
     }
-    
-    let filteredData = workingData;
-    if (filterType) {
-        filteredData = data.filter(row => row[3] === filterType); // Filter by error type (column 3)
-    }
 
-    if (filteredData.length === 0) {
+    if (workingData.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="7" class="no-data">ไม่มีข้อมูลที่ตรงกับตัวกรอง</td></tr>';
         return;
     }
 
-    const rows = filteredData.slice(0, 50).filter(row => {
+    const rows = workingData.slice(0, 50).filter(row => {
         // Filter out empty rows - check if row has timestamp and report ID
         return row && row[0] && row[1] && 
                row[0].toString().trim() !== '' && 
@@ -725,10 +1074,20 @@ function populateTable(data) {
         const errorType = row[3] || 'N/A';
         const location = row[4] || 'N/A';
         const process = row[5] || 'N/A';
-        const reporter = row[2] || 'N/A'; // Changed from row[11] to row[2]
+        const reporter = row[11] || 'N/A'; // ผู้รายงาน in column 11
+
+        // Highlight current user's reports
+        const isMyReport = currentUser && (
+            reporter === currentUser.name || 
+            reporter.includes(currentUser.name) ||
+            reporter === currentUser.psCode ||
+            reporter === currentUser.id13
+        );
+        
+        const rowClass = isMyReport ? 'my-report' : '';
 
         return `
-            <tr>
+            <tr class="${rowClass}">
                 <td>${reportId}</td>
                 <td>${formattedDate}</td>
                 <td>${formattedTime}</td>
@@ -742,18 +1101,49 @@ function populateTable(data) {
 
     tableBody.innerHTML = rows;
     
-    if (filteredData.length > 50) {
-        tableBody.innerHTML += `<tr><td colspan="7" class="no-data">แสดง 50 รายการแรกจากทั้งหมด ${filteredData.length} รายการ</td></tr>`;
+    if (workingData.length > 50) {
+        tableBody.innerHTML += `<tr><td colspan="7" class="no-data">แสดง 50 รายการแรกจากทั้งหมด ${workingData.length} รายการ</td></tr>`;
     }
 }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    
+    // Check authentication first
+    if (checkAuthentication()) {
+        // User is already logged in, initialize the app
+        initializeApp();
+    } else {
+        // User not logged in, show login page
+        showLoginPage();
+    }
+    
+    // Login form event listener
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+});
+
+function initializeApp() {
+    console.log('=== initializeApp called ===');
+    console.log('currentUser in initializeApp:', currentUser);
+    
     // Load saved configuration
     loadConfig();
     
     // Initialize form
     initializeForm();
+    
+    // Update reporter field with current user - delay to ensure DOM is ready
+    setTimeout(() => {
+        console.log('Calling updateReporterField from initializeApp');
+        updateReporterField();
+    }, 200);
+    
+    // Update dashboard user info
+    updateDashboardUserInfo();
     
     // แสดงสถานะ Demo Mode ถ้าไม่ได้ตั้งค่า Web App URL
     if (!googleSheetsConfig.webAppUrl) {
@@ -774,8 +1164,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    // Populate dynamic process select
-    populateProcessSelect();
     
     // Form event listeners
     document.getElementById('errorForm').addEventListener('submit', handleFormSubmit);
@@ -787,14 +1175,17 @@ document.addEventListener('DOMContentLoaded', function() {
         drugForm.addEventListener('submit', handleDrugFormSubmit);
     }
     
-    // Filter change listener
-    document.getElementById('filterType').addEventListener('change', function() {
-        // Re-populate table with current data when filter changes
-        const tableBody = document.getElementById('errorTableBody');
-        if (tableBody.children.length > 0 && !tableBody.querySelector('.no-data')) {
-            // Only re-filter if we have data loaded
-            loadData();
-        }
+    // Filter change listeners
+    document.getElementById('filterUser').addEventListener('change', function() {
+        // Re-load data when user filter changes
+        loadData();
+        updateDashboardUserInfo();
+    });
+    
+    document.getElementById('filterPeriod').addEventListener('change', function() {
+        // Re-load data when period filter changes
+        loadData();
+        updateDashboardUserInfo();
     });
     
     // Auto-save settings when user types
@@ -816,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', function() {
             saveConfig();
         });
     });
-});
+}
 
 // Utility functions
 function generateSampleData() {

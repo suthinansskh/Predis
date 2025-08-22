@@ -39,6 +39,13 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Launch Live Server",
+			"type": "shell",
+			"command": "start chrome http://localhost:5500",
+			"isBackground": true,
+			"group": "test"
 		}
 	]
 }

@@ -11,10 +11,62 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
+    <!-- Login Section -->
+    <section id="login" class="login-section active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <i class="fas fa-pills"></i>
+                    <h1>Predispensing Error Recorder</h1>
+                    <p>กรุณาเข้าสู่ระบบด้วย PS Code/ID13 และรหัสผ่าน</p>
+                </div>
+                
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="userCode">
+                            <i class="fas fa-user"></i> PS Code หรือ ID13:
+                        </label>
+                        <input type="text" id="userCode" name="userCode" required 
+                               placeholder="ใส่ PS Code หรือ ID13" autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-lock"></i> รหัสผ่าน:
+                        </label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="ใส่รหัสผ่าน" autocomplete="current-password">
+                    </div>
+                    
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+                    </button>
+                </form>
+                
+                <div class="login-info">
+                    <p><i class="fas fa-info-circle"></i> ติดต่อ IT ถ้าไม่สามารถเข้าสู่ระบบได้</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Application (Initially Hidden) -->
+    <div id="mainApp" class="container" style="display: none;">
         <header>
-            <h1><i class="fas fa-pills"></i> บันทึก Predispensing Error</h1>
-            <p>กรอกข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1><i class="fas fa-pills"></i> บันทึก Predispensing Error</h1>
+                    <p>กรอกข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+                </div>
+                <div class="header-right">
+                    <span id="currentUser" class="current-user">
+                        <i class="fas fa-user"></i> <span id="userName">Loading...</span>
+                    </span>
+                    <button id="logoutBtn" class="logout-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                    </button>
+                </div>
+            </div>
         </header>
 
         <nav>
@@ -119,13 +171,7 @@
                         <label for="errorDetail">ข้อผิดพลาด:</label>
                         <select id="errorDetail" name="errorDetail" required>
                             <option value="">เลือกข้อผิดพลาด</option>
-                            <option value="เลือกยาผิด">เลือกยาผิด</option>
-                            <option value="คำนวณขนาดผิด">คำนวณขนาดผิด</option>
-                            <option value="อ่านชื่อคนไข้ผิด">อ่านชื่อคนไข้ผิด</option>
-                            <option value="เตรียมสีผิด">เตรียมสีผิด</option>
-                            <option value="ไม่ได้ตรวจสอบ">ไม่ได้ตรวจสอบ</option>
-                            <option value="บันทึกข้อมูลผิด">บันทึกข้อมูลผิด</option>
-                            <option value="วางยาผิดที่">วางยาผิดที่</option>
+                            <!-- จะถูก populate ตามกระบวนการที่เลือก -->
                         </select>
                     </div>
 
@@ -137,30 +183,41 @@
                                autocomplete="off" required>
                         <datalist id="correctItemList">
                         </datalist>
+                        <small class="form-help">ค้นหาชื่อยาหรือรหัสยาที่ควรจะได้รับตามใบสั่งยา</small>
                     </div>
 
                     <div class="form-group">
-                        <label for="incorrectItem">รายการยาที่ผิด:</label>
+                        <label for="incorrectItem">รายการยาที่ผิด: <span class="optional">(ไม่บังคับ)</span></label>
                         <input type="text" id="incorrectItem" name="incorrectItem" 
                                list="incorrectItemList" 
-                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด" 
-                               autocomplete="off" required>
+                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด (สามารถระบุค่าว่างได้)" 
+                               autocomplete="off">
                         <datalist id="incorrectItemList">
                         </datalist>
+                        <small class="form-help">กรณีไม่มียาที่เตรียมผิด หรือยังไม่ได้เตรียมยา สามารถปล่อยว่างได้</small>
                     </div>
 
                     <div class="form-group">
                         <label for="cause">สาเหตุ:</label>
                         <select id="cause" name="cause" required>
                             <option value="">เลือกสาเหตุ</option>
-                            <option value="ความประมาท">ความประมาท</option>
-                            <option value="ภาระงานมาก">ภาระงานมาก</option>
-                            <option value="การสื่อสารไม่ชัดเจน">การสื่อสารไม่ชัดเจน</option>
-                            <option value="ขาดความรู้">ขาดความรู้</option>
-                            <option value="ระบบไม่เหมาะสม">ระบบไม่เหมาะสม</option>
-                            <option value="อุปกรณ์ไม่เพียงพอ">อุปกรณ์ไม่เพียงพอ</option>
-                            <option value="สภาพแวดล้อม">สภาพแวดล้อม</option>
-                            <option value="ยาชื่อคล้าย">ยาชื่อคล้าย/ลักษณะคล้าย</option>
+                            <option value="แคปซูลคล้ายกัน">แคปซูลคล้ายกัน</option>
+                            <option value="เม็ดคล้ายกัน">เม็ดคล้ายกัน</option>
+                            <option value="ชื่อยาคล้ายกัน">ชื่อยาคล้ายกัน</option>
+                            <option value="ชื่อยาออกเสียงคล้ายกัน">ชื่อยาออกเสียงคล้ายกัน</option>
+                            <option value="กล่องยา packaging คล้ายกัน">กล่องยา packaging คล้ายกัน</option>
+                            <option value="ยาหลายความแรง/ขนาด">ยาหลายความแรง/ขนาด</option>
+                            <option value="เก็บยาใกล้กัน">เก็บยาใกล้กัน</option>
+                            <option value="ลายมืออ่านยาก/ไม่ชัดเจน">ลายมืออ่านยาก/ไม่ชัดเจน</option>
+                            <option value="สื่อสารผิดพลาด">สื่อสารผิดพลาด</option>
+                            <option value="ภาระงานมากเกินไป">ภาระงานมากเกินไป</option>
+                            <option value="ขาดความรอบคอบ">ขาดความรอบคอบ</option>
+                            <option value="เร่งรีบ">เร่งรีบ</option>
+                            <option value="ไม่ได้ตรวจสอบซ้ำ">ไม่ได้ตรวจสอบซ้ำ</option>
+                            <option value="เภสัช/เจ้าหน้าที่ขาด">เภสัช/เจ้าหน้าที่ขาด</option>
+                            <option value="ห้องยาลง order ผิด">ห้องยาลง order ผิด</option>
+                            <option value="ไม่ได้ตรวจสอบยาหมดอายุ">ไม่ได้ตรวจสอบยาหมดอายุ</option>
+                            <option value="สาเหตุอื่นๆ">สาเหตุอื่นๆ</option>
                         </select>
                     </div>
 
@@ -171,11 +228,10 @@
 
                     <div class="form-group">
                         <label for="reporter">ผู้รายงาน:</label>
-                        <select id="reporter" name="reporter" required>
-                            <option value="">เลือกผู้รายงาน</option>
-                            <option value="ภก.สุทธินันท์ เอิกเกริก (P13)" selected>ภก.สุทธินันท์ เอิกเกริก (P13)</option>
-                        </select>
-                        <small>เลือกจากรายชื่อผู้ใช้ในระบบ</small>
+                        <input type="text" id="reporter" name="reporter" readonly 
+                               value="กรุณาเข้าสู่ระบบก่อนใช้งาน" 
+                               style="background-color: #f5f5f5; cursor: not-allowed;">
+                        <small>ข้อมูลจากผู้ใช้ที่เข้าสู่ระบบ</small>
                     </div>
 
                     <button type="submit" class="submit-btn">
@@ -189,19 +245,25 @@
         <section id="dashboard" class="section">
             <div class="card">
                 <h2>แดชบอร์ดข้อผิดพลาด</h2>
+                <div class="user-info" id="dashboardUserInfo" style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; border-left: 4px solid #2196f3;">
+                    <strong>ผู้ใช้:</strong> <span id="currentUserDisplay">-</span> | 
+                    <strong>กลุ่ม:</strong> <span id="currentGroupDisplay">-</span>
+                </div>
                 <div class="dashboard-controls">
                     <button onclick="loadData()" class="load-btn">
                         <i class="fas fa-sync"></i> รีเฟรชข้อมูล
                     </button>
-                    <select id="filterType">
-                        <option value="">ประเภทข้อผิดพลาดทั้งหมด</option>
-                        <option value="ยาผิด">ยาผิด</option>
-                        <option value="ขนาดผิด">ขนาดผิด</option>
-                        <option value="คนไข้ผิด">คนไข้ผิด</option>
-                        <option value="วิธีใช้ผิด">วิธีใช้ผิด</option>
-                        <option value="เวลาผิด">เวลาผิด</option>
-                        <option value="ไม่จ่าย">ไม่จ่าย</option>
-                        <option value="อื่นๆ">อื่นๆ</option>
+                    <select id="filterUser">
+                        <option value="">ผู้รายงานทั้งหมด</option>
+                        <option value="currentUser">รายงานของฉัน</option>
+                        <option value="myGroup">กลุ่มของฉัน</option>
+                    </select>
+                    <select id="filterPeriod">
+                        <option value="">ช่วงเวลาทั้งหมด</option>
+                        <option value="today">วันนี้</option>
+                        <option value="week">7 วันที่ผ่านมา</option>
+                        <option value="month">เดือนนี้</option>
+                        <option value="quarter">3 เดือนที่ผ่านมา</option>
                     </select>
                 </div>
                 
@@ -211,12 +273,16 @@
                         <div class="stat-number" id="totalErrors">0</div>
                     </div>
                     <div class="stat-card">
-                        <h3>เดือนนี้</h3>
-                        <div class="stat-number" id="monthlyErrors">0</div>
+                        <h3>รายงานของฉัน</h3>
+                        <div class="stat-number" id="myErrors">0</div>
                     </div>
                     <div class="stat-card">
-                        <h3>สำคัญมาก</h3>
-                        <div class="stat-number critical" id="criticalErrors">0</div>
+                        <h3>กลุ่มของฉัน</h3>
+                        <div class="stat-number" id="groupErrors">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>เดือนนี้</h3>
+                        <div class="stat-number" id="monthlyErrors">0</div>
                     </div>
                     <div class="stat-card">
                         <h3>7 วันที่ผ่านมา</h3>
@@ -225,6 +291,12 @@
                 </div>
 
                 <div class="data-table-container">
+                    <div class="table-legend">
+                        <span class="legend-item">
+                            <span class="legend-color my-report"></span>
+                            รายงานของคุณ
+                        </span>
+                    </div>
                     <table id="errorTable">
                         <thead>
                             <tr>
@@ -430,15 +502,18 @@
                     <div class="form-group">
                         <label for="webAppUrl">Google Apps Script Web App URL:</label>
                         <input type="url" id="webAppUrl" name="webAppUrl" placeholder="https://script.google.com/macros/s/.../exec">
+                        <div class="cors-info" style="margin-top: 10px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; font-size: 0.9rem;">
+                            <strong>⚠️ หมายเหตุ CORS:</strong><br>
+                            • หากเกิด CORS error ให้ deploy Apps Script ใหม่<br>
+                            • ตั้งค่า Execute as: "Me", Who has access: "Anyone"<br>
+                            • หรือใช้ Google Chrome ด้วย --disable-web-security flag<br>
+                            • หรือใช้ Live Server extension แทน file:// protocol
+                        </div>
                         <small>จำเป็นสำหรับการบันทึกข้อมูล (ดูคำแนะนำด้านล่าง)</small>
                     </div>
 
                     <button type="submit" class="submit-btn">
                         <i class="fas fa-save"></i> บันทึกการตั้งค่า
-                    </button>
-
-                    <button type="button" onclick="populateReporterDropdown()" class="load-btn" style="margin-top: 10px; width: 100%;">
-                        <i class="fas fa-users"></i> รีเฟรชรายชื่อผู้ใช้
                     </button>
                 </form>
 
@@ -517,7 +592,7 @@
                 </div>
             </div>
         </section>
-    </div>
+    </div> <!-- End mainApp -->
 
     <div id="notification" class="notification"></div>
 
