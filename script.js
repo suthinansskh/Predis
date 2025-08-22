@@ -433,18 +433,30 @@ const errorOptionsByProcess = {
 };
 
 function populateProcessSelect() {
+    console.log('=== populateProcessSelect called ===');
     const sel = document.getElementById('process');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">เลือกกระบวนการ</option>' + PROCESS_OPTIONS
+    console.log('Process select element found:', !!sel);
+    
+    if (!sel) {
+        console.error('Process select element not found');
+        return;
+    }
+    
+    const optionsHtml = '<option value="">เลือกกระบวนการ</option>' + PROCESS_OPTIONS
         .map(p => `<option value="${p}">${p}</option>`)
         .join('');
+    
+    sel.innerHTML = optionsHtml;
+    console.log('Process options populated:', PROCESS_OPTIONS.length, 'options');
     
     // Add event listener for process change (only if not already added)
     if (!sel.dataset.listenerAdded) {
         sel.addEventListener('change', function() {
+            console.log('Process changed to:', this.value);
             updateErrorOptions(this.value);
         });
         sel.dataset.listenerAdded = 'true';
+        console.log('Process change listener added');
     }
 }
 
