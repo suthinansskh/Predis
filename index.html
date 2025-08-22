@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predispensing Error Recorder</title>
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-pills"></i> บันทึก Predispensing Error</h1>
+            <p>กรอกข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+        </header>
+
+        <nav>
+            <button class="nav-btn active" onclick="showSection('form')">
+                <i class="fas fa-plus"></i> บันทึกข้อผิดพลาด
+            </button>
+            <button class="nav-btn" onclick="showSection('dashboard')">
+                <i class="fas fa-chart-bar"></i> แดชบอร์ด
+            </button>
+            <button class="nav-btn" onclick="showSection('druglist')">
+                <i class="fas fa-pills"></i> รายการยา
+            </button>
+            <button class="nav-btn" onclick="showSection('settings')">
+                <i class="fas fa-cog"></i> ตั้งค่า
+            </button>
+        </nav>
+
+        <!-- Error Report Form Section -->
+        <section id="form" class="section active">
+            <div class="card">
+                <h2>บันทึก Predispensing Error</h2>
+                <form id="errorForm">
+                    <div class="form-group">
+                        <label for="eventDate">วันที่เกิดเหตุการณ์:</label>
+                        <input type="date" id="eventDate" name="eventDate" required>
+                    </div>
+
+                    <input type="hidden" id="reportId" name="reportId">
+
+                    <div class="form-group">
+                        <label for="shift">เวร:</label>
+                        <select id="shift" name="shift" required>
+                            <option value="">เลือกเวร</option>
+                            <option value="เช้า">เช้า (08:00-16:00)</option>
+                            <option value="บ่าย">บ่าย (16:00-24:00)</option>
+                            <option value="ดึก">ดึก (24:00-08:00)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="errorType">ประเภท:</label>
+                        <select id="errorType" name="errorType" required>
+                            <option value="">เลือกประเภท</option>
+                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
+                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">สถานที่เกิดเหตุการณ์:</label>
+                        <select id="location" name="location" required>
+                            <option value="">เลือกสถานที่</option>
+                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น1">ห้องจ่ายยาผู้ป่วยนอกชั้น1</option>
+                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น2">ห้องจ่ายยาผู้ป่วยนอกชั้น2</option>
+                            <option value="ห้องจ่ายยาจิตเวช">ห้องจ่ายยาจิตเวช</option>
+                            <option value="ห้องจ่ายยาคลินคพิเศษ">ห้องจ่ายยาคลินคพิเศษ</option>
+                            <option value="ห้องยาผู้ป่วยใน">ห้องยาผู้ป่วยใน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ฉุกเฉิน">ห้องยาอุบัติเหตุ-ฉุกเฉิน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยใน">ห้องยาอุบัติเหตุ-ผู้ป่วยใน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน">ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน</option>
+                            <option value="ห้องจ่ายเวชภัณฑ์">ห้องจ่ายเวชภัณฑ์</option>
+                            <option value="งานจัดซื้อยาและเวชภัณฑ์">งานจัดซื้อยาและเวชภัณฑ์</option>
+                            <option value="งานคลังยา">งานคลังยา</option>
+                            <option value="งานผลิตยา">งานผลิตยา</option>
+                            <option value="งานเคมีบำบัด">งานเคมีบำบัด</option>
+                            <option value="คลังเวชภัณฑ์">งานคลังเวชภัณฑ์</option>
+                            <option value="รพ.สต.">รพ.สต.</option>
+                            <option value="อื่นๆ">อื่นๆ (ระบุในรายละเอียดเพิ่มเติม)</option>
+                    </select>
+                    </div>
+                    <div class="form-group" id="substationGroup" style="display:none;">
+                        <label for="substation">เลือกโรงพยาบาลส่งเสริมสุขภาพตำบล</label>
+                        <select id="substation">
+                            <option value="">เลือก รพ.สต.</option>
+                            <option value="รพ.สต.คูซอด">รพ.สต.คูซอด</option>
+                            <option value="รพ.สต.แทง">รพ.สต.แทง</option>
+                            <option value="รพ.สต.หนองคู">รพ.สต.หนองคู</option>
+                            <option value="รพ.สต.ตะดอบ">รพ.สต.ตะดอบ</option>
+                            <option value="รพ.สต.หนองครก">รพ.สต.หนองครก</option>
+                            <option value="รพ.สต.กุดโง้ง">รพ.สต.กุดโง้ง</option>
+                            <option value="รพ.สต.โพนค้อ">รพ.สต.โพนค้อ</option>
+                            <option value="รพ.สต.หนองแว้ง">รพ.สต.หนองแว้ง</option>
+                            <option value="รพ.สต.โนนแกด">รพ.สต.โนนแกด</option>
+                            <option value="รพ.สต.หนองไฮ">รพ.สต.หนองไฮ</option>
+                            <option value="รพ.สต.หนองแก้ว">รพ.สต.หนองแก้ว</option>
+                            <option value="รพ.สต.น้ำคำ">รพ.สต.น้ำคำ</option>
+                            <option value="รพ.สต.หนองโน">รพ.สต.หนองโน</option>
+                            <option value="รพ.สต.โพธิ์">รพ.สต.โพธิ์</option>
+                            <option value="รพ.สต.ก้านเหลือง">รพ.สต.ก้านเหลือง</option>
+                            <option value="รพ.สต.หนองไผ่">รพ.สต.หนองไผ่</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="process">กระบวนการ:</label>
+                        <select id="process" name="process" required>
+                            <!-- จะถูก populate ด้วยสคริปต์ -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="errorDetail">ข้อผิดพลาด:</label>
+                        <select id="errorDetail" name="errorDetail" required>
+                            <option value="">เลือกข้อผิดพลาด</option>
+                            <option value="เลือกยาผิด">เลือกยาผิด</option>
+                            <option value="คำนวณขนาดผิด">คำนวณขนาดผิด</option>
+                            <option value="อ่านชื่อคนไข้ผิด">อ่านชื่อคนไข้ผิด</option>
+                            <option value="เตรียมสีผิด">เตรียมสีผิด</option>
+                            <option value="ไม่ได้ตรวจสอบ">ไม่ได้ตรวจสอบ</option>
+                            <option value="บันทึกข้อมูลผิด">บันทึกข้อมูลผิด</option>
+                            <option value="วางยาผิดที่">วางยาผิดที่</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="correctItem">รายการที่ถูกต้อง:</label>
+                        <input type="text" id="correctItem" name="correctItem" 
+                               list="correctItemList" 
+                               placeholder="พิมพ์เพื่อค้นหารายการยาที่ถูกต้องตามใบสั่งยา" 
+                               autocomplete="off" required>
+                        <datalist id="correctItemList">
+                        </datalist>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="incorrectItem">รายการยาที่ผิด:</label>
+                        <input type="text" id="incorrectItem" name="incorrectItem" 
+                               list="incorrectItemList" 
+                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด" 
+                               autocomplete="off" required>
+                        <datalist id="incorrectItemList">
+                        </datalist>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cause">สาเหตุ:</label>
+                        <select id="cause" name="cause" required>
+                            <option value="">เลือกสาเหตุ</option>
+                            <option value="ความประมาท">ความประมาท</option>
+                            <option value="ภาระงานมาก">ภาระงานมาก</option>
+                            <option value="การสื่อสารไม่ชัดเจน">การสื่อสารไม่ชัดเจน</option>
+                            <option value="ขาดความรู้">ขาดความรู้</option>
+                            <option value="ระบบไม่เหมาะสม">ระบบไม่เหมาะสม</option>
+                            <option value="อุปกรณ์ไม่เพียงพอ">อุปกรณ์ไม่เพียงพอ</option>
+                            <option value="สภาพแวดล้อม">สภาพแวดล้อม</option>
+                            <option value="ยาชื่อคล้าย">ยาชื่อคล้าย/ลักษณะคล้าย</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="additionalDetails">รายละเอียดเพิ่มเติม (ถ้ามี):</label>
+                        <textarea id="additionalDetails" name="additionalDetails" rows="4" placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reporter">ผู้รายงาน:</label>
+                        <select id="reporter" name="reporter" required>
+                            <option value="">เลือกผู้รายงาน</option>
+                            <option value="ภก.สุทธินันท์ เอิกเกริก (P13)" selected>ภก.สุทธินันท์ เอิกเกริก (P13)</option>
+                        </select>
+                        <small>เลือกจากรายชื่อผู้ใช้ในระบบ</small>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-save"></i> บันทึก
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="section">
+            <div class="card">
+                <h2>แดชบอร์ดข้อผิดพลาด</h2>
+                <div class="dashboard-controls">
+                    <button onclick="loadData()" class="load-btn">
+                        <i class="fas fa-sync"></i> รีเฟรชข้อมูล
+                    </button>
+                    <select id="filterType">
+                        <option value="">ประเภทข้อผิดพลาดทั้งหมด</option>
+                        <option value="ยาผิด">ยาผิด</option>
+                        <option value="ขนาดผิด">ขนาดผิด</option>
+                        <option value="คนไข้ผิด">คนไข้ผิด</option>
+                        <option value="วิธีใช้ผิด">วิธีใช้ผิด</option>
+                        <option value="เวลาผิด">เวลาผิด</option>
+                        <option value="ไม่จ่าย">ไม่จ่าย</option>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>ข้อผิดพลาดทั้งหมด</h3>
+                        <div class="stat-number" id="totalErrors">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>เดือนนี้</h3>
+                        <div class="stat-number" id="monthlyErrors">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>สำคัญมาก</h3>
+                        <div class="stat-number critical" id="criticalErrors">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>7 วันที่ผ่านมา</h3>
+                        <div class="stat-number" id="weeklyErrors">0</div>
+                    </div>
+                </div>
+
+                <div class="data-table-container">
+                    <table id="errorTable">
+                        <thead>
+                            <tr>
+                                <th>เลขที่รายงาน</th>
+                                <th>วันที่</th>
+                                <th>เวลา</th>
+                                <th>ประเภท</th>
+                                <th>สถานที่</th>
+                                <th>กระบวนการ</th>
+                                <th>ผู้รายงาน</th>
+                            </tr>
+                        </thead>
+                        <tbody id="errorTableBody">
+                            <tr>
+                                <td colspan="7" class="no-data">ไม่มีข้อมูล กดปุ่ม "รีเฟรชข้อมูล" เพื่อโหลดจาก Google Sheets</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Drug List Section -->
+        <section id="druglist" class="section">
+            <div class="card">
+                <div class="section-header">
+                    <h2><i class="fas fa-pills"></i> รายการยา</h2>
+                    <button id="addDrugBtn" class="btn btn-primary" onclick="showAddDrugForm()">
+                        <i class="fas fa-plus"></i> เพิ่มยา
+                    </button>
+                </div>
+
+                <!-- Add Drug Form -->
+                <div id="addDrugForm" class="card" style="display: none; margin-bottom: 20px;">
+                    <h3>เพิ่มรายการยาใหม่</h3>
+                    <form id="drugForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="drugCode">รหัสยา (Drug Code):</label>
+                                <input type="text" id="drugCode" name="drugCode" placeholder="เช่น D001, MED001" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="drugName">ชื่อยา (Drug Name):</label>
+                                <input type="text" id="drugName" name="drugName" placeholder="ชื่อยาภาษาไทยและอังกฤษ" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="drugGroup">กลุ่มยา (Group):</label>
+                                <select id="drugGroup" name="drugGroup" required>
+                                    <option value="">-- เลือกกลุ่มยา --</option>
+                                    <option value="Antibiotic">ยาปฏิชีวนะ (Antibiotic)</option>
+                                    <option value="Analgesic">ยาแก้ปวด (Analgesic)</option>
+                                    <option value="Antihypertensive">ยาลดความดันโลหิต (Antihypertensive)</option>
+                                    <option value="Antidiabetic">ยาเบาหวาน (Antidiabetic)</option>
+                                    <option value="Vitamin">วิตามิน (Vitamin)</option>
+                                    <option value="Supplement">อาหารเสริม (Supplement)</option>
+                                    <option value="Cardiac">ยาหัวใจ (Cardiac)</option>
+                                    <option value="Respiratory">ยาระบบหายใจ (Respiratory)</option>
+                                    <option value="Gastrointestinal">ยาระบบทางเดินอาหาร (Gastrointestinal)</option>
+                                    <option value="Neurological">ยาระบบประสาท (Neurological)</option>
+                                    <option value="Other">อื่นๆ (Other)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="hadStatus">สถานะ HAD:</label>
+                                <select id="hadStatus" name="hadStatus" required>
+                                    <option value="">-- เลือกสถานะ HAD --</option>
+                                    <option value="High">High Alert Drug</option>
+                                    <option value="Regular">ยาทั่วไป</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="drugStatus">สถานะการใช้งาน (Status):</label>
+                            <select id="drugStatus" name="drugStatus" required>
+                                <option value="">-- เลือกสถานะ --</option>
+                                <option value="Active">ใช้งาน (Active)</option>
+                                <option value="Inactive">ไม่ใช้งาน (Inactive)</option>
+                                <option value="Discontinued">ยกเลิก (Discontinued)</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> บันทึกยา
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="hideAddDrugForm()">
+                                <i class="fas fa-times"></i> ยกเลิก
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Search and Filter -->
+                <div class="filter-section">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <input type="text" id="searchDrug" placeholder="ค้นหาจากรหัสยาหรือชื่อยา..." oninput="filterDrugs()">
+                        </div>
+                        <div class="form-group">
+                            <select id="filterGroup" onchange="filterDrugs()">
+                                <option value="">-- ทุกกลุ่มยา --</option>
+                                <option value="Antibiotic">ยาปฏิชีวนะ</option>
+                                <option value="Analgesic">ยาแก้ปวด</option>
+                                <option value="Antihypertensive">ยาลดความดันโลหิต</option>
+                                <option value="Antidiabetic">ยาเบาหวาน</option>
+                                <option value="Vitamin">วิตามิน</option>
+                                <option value="Supplement">อาหารเสริม</option>
+                                <option value="Cardiac">ยาหัวใจ</option>
+                                <option value="Respiratory">ยาระบบหายใจ</option>
+                                <option value="Gastrointestinal">ยาระบบทางเดินอาหาร</option>
+                                <option value="Neurological">ยาระบบประสาท</option>
+                                <option value="Other">อื่นๆ</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <select id="filterHAD" onchange="filterDrugs()">
+                                <option value="">-- ทุกสถานะ HAD --</option>
+                                <option value="High">High Alert Drug</option>
+                                <option value="Regular">ยาทั่วไป</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drug List Table -->
+                <div class="table-container">
+                    <table id="drugTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>รหัสยา</th>
+                                <th>ชื่อยา</th>
+                                <th>กลุ่มยา</th>
+                                <th>HAD</th>
+                                <th>สถานะ</th>
+                                <th>การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drugTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center">กำลังโหลดข้อมูล...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Drug Statistics -->
+                <div class="stats-grid" style="margin-top: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalDrugs">0</div>
+                        <div class="stat-label">รายการยาทั้งหมด</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="hadDrugs">0</div>
+                        <div class="stat-label">High Alert Drug</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="activeDrugs">0</div>
+                        <div class="stat-label">ยาที่ใช้งาน</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="inactiveDrugs">0</div>
+                        <div class="stat-label">ยาที่ไม่ใช้งาน</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings" class="section">
+            <div class="card">
+                <h2>ตั้งค่า Google Sheets</h2>
+                <form id="settingsForm">
+                    <div class="form-group">
+                        <label for="apiKey">Google Sheets API Key:</label>
+                        <input type="password" id="apiKey" name="apiKey" value="" placeholder="ใส่ Google Sheets API key ของคุณ">
+                        <small>รับ API key จาก Google Cloud Console</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="spreadsheetId">Spreadsheet ID:</label>
+                        <input type="text" id="spreadsheetId" name="spreadsheetId" value="" placeholder="ใส่ Google Sheets ID">
+                        <small>พบใน URL ของ Google Sheet ของคุณ</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sheetName">ชื่อ Sheet ข้อผิดพลาด:</label>
+                        <input type="text" id="sheetName" name="sheetName" value="Predispensing_Errors" placeholder="ชื่อ sheet สำหรับข้อผิดพลาด">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="userSheetName">ชื่อ Sheet ผู้ใช้:</label>
+                        <input type="text" id="userSheetName" name="userSheetName" value="Users" placeholder="ชื่อ sheet สำหรับข้อมูลผู้ใช้">
+                        <small>Sheet นี้ใช้สำหรับดึงรายชื่อผู้ใช้ในระบบ</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="drugSheetName">ชื่อ Sheet รายการยา:</label>
+                        <input type="text" id="drugSheetName" name="drugSheetName" value="Drug_List" placeholder="ชื่อ sheet สำหรับรายการยา">
+                        <small>Sheet นี้ใช้สำหรับดึงรายชื่อรายการยาในระบบ</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="webAppUrl">Google Apps Script Web App URL:</label>
+                        <input type="url" id="webAppUrl" name="webAppUrl" placeholder="https://script.google.com/macros/s/.../exec">
+                        <small>จำเป็นสำหรับการบันทึกข้อมูล (ดูคำแนะนำด้านล่าง)</small>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-save"></i> บันทึกการตั้งค่า
+                    </button>
+
+                    <button type="button" onclick="populateReporterDropdown()" class="load-btn" style="margin-top: 10px; width: 100%;">
+                        <i class="fas fa-users"></i> รีเฟรชรายชื่อผู้ใช้
+                    </button>
+                </form>
+
+                <div class="setup-instructions">
+                    <h3>คำแนะนำการตั้งค่า:</h3>
+                    <ol>
+                        <li>สร้าง Google Sheet พร้อม 2 tabs:
+                            <ul>
+                                <li><strong>Predispensing_Errors</strong> พร้อมคอลัมน์: วันที่, เลขที่รายงาน, เวร, ประเภท, สถานที่, กระบวนการ, ข้อผิดพลาด, รายการถูกต้อง, รายการผิด, สาเหตุ, รายละเอียดเพิ่มเติม, ผู้รายงาน</li>
+                                <li><strong>Users</strong> พร้อมคอลัมน์: PS Code, ID 13 หลัก, ชื่อ-นามสกุล, กลุ่ม, ระดับ, อีเมล, รหัสผ่าน, status</li>
+                            </ul>
+                        </li>
+                        <li><strong>แชร์ Google Sheet:</strong> คลิก "แชร์" → เปลี่ยนเป็น "ทุกคนที่มีลิงก์สามารถดูได้"</li>
+                        <li><strong>สร้าง Google Apps Script สำหรับบันทึกข้อมูล:</strong>
+                            <ol type="a">
+                                <li>ใน Google Sheet ไปที่ Extensions → Apps Script</li>
+                                <li>ลบโค้ดเดิม และคัดลอกโค้ดด้านล่างใส่แทน</li>
+                                <li>บันทึก → Deploy → New deployment</li>
+                                <li>Type: Web app → Execute as: Me → Who has access: Anyone</li>
+                                <li>คัดลอก Web app URL มาใส่ในช่องด้านบน</li>
+                                <li><strong>หมายเหตุ:</strong> หากอัปเดตโค้ด Apps Script ต้อง Deploy ใหม่</li>
+                            </ol>
+                        </li>
+                        <li>ไปที่ <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+                        <li><strong>เปิดใช้งาน Google Sheets API:</strong> APIs & Services → Library → ค้นหา "Google Sheets API" → เปิดใช้งาน</li>
+                        <li><strong>สร้าง API Key:</strong> APIs & Services → Credentials → Create Credentials → API Key</li>
+                        <li>คัดลอกข้อมูลผู้ใช้จากไฟล์ users.csv ไปใส่ใน Sheet Users</li>
+                        <li><strong>ทดสอบ:</strong> คลิก "รีเฟรชรายชื่อผู้ใช้" เพื่อตรวจสอบการเชื่อมต่อ</li>
+                    </ol>
+                    
+                    <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #0066cc;">
+                        <h4 style="color: #0066cc; margin-top: 0;">Google Apps Script Code:</h4>
+                                                                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px;">// Minimal ตัวอย่าง (อัปเดต): Apps Script ไม่รองรับ setHeaders กับ ContentService
+                        function jsonResponse(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);} 
+                        function doPost(e){
+                            try{
+                                let data;
+                                if(e.parameter && e.parameter.action){ data = e.parameter; }
+                                else if(e.postData && e.postData.contents){ data = JSON.parse(e.postData.contents); }
+                                else { return jsonResponse({error:'No data'}); }
+                                const ss = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID');
+                                if(data.action==='append'){
+                                    const sheet = ss.getSheetByName(data.sheetName || 'Predispensing_Errors');
+                                    if(!sheet) return jsonResponse({error:'Sheet not found'});
+                                    if(data.timestamp){
+                                        sheet.appendRow([
+                                            data.timestamp,
+                                            data.reportId,
+                                            data.shift,
+                                            data.errorType,
+                                            data.location,
+                                            data.process,
+                                            data.errorDetail,
+                                            data.correctItem,
+                                            data.incorrectItem,
+                                            data.cause,
+                                            data.additionalDetails||'',
+                                            data.reporter
+                                        ]);
+                                        return jsonResponse({success:true});
+                                    }
+                                }
+                                return jsonResponse({error:'Invalid action'});
+                            }catch(err){return jsonResponse({error:err.toString()});}
+                        }</pre>
+                    </div>
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #ffc107;">
+                        <h4 style="color: #856404; margin-top: 0;">หมายเหตุสำคัญ:</h4>
+                        <ul style="color: #856404; margin-bottom: 0;">
+                            <li><strong>API Key</strong> ใช้สำหรับอ่านข้อมูลเท่านั้น (Users list)</li>
+                            <li><strong>Web App URL</strong> จำเป็นสำหรับการบันทึกข้อมูล</li>
+                            <li>หากไม่ตั้งค่า Web App จะไม่สามารถบันทึกข้อผิดพลาดได้</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
