@@ -121,24 +121,6 @@ function updateDashboardUserInfo() {
     }
 }
 
-// ฟังก์ชันทดสอบการล็อกอิน
-async function testLogin() {
-    console.log('=== Test Login Started ===');
-    
-    // เติมข้อมูลในฟอร์ม
-    document.getElementById('userCode').value = 'P13';
-    document.getElementById('password').value = 'admin123';
-    
-    // สร้าง fake event
-    const fakeEvent = {
-        preventDefault: () => {},
-        target: document.getElementById('loginForm')
-    };
-    
-    // เรียกใช้ handleLogin
-    await handleLogin(fakeEvent);
-}
-
 async function handleLogin(event) {
     event.preventDefault();
     
