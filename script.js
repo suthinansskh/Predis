@@ -14,11 +14,20 @@ let googleSheetsConfig = {
 
 // Authentication and User Management
 function checkAuthentication() {
+    console.log('=== checkAuthentication called ===');
     const storedUser = localStorage.getItem('currentUser');
+    console.log('Stored user from localStorage:', storedUser);
+    
     if (storedUser) {
-        currentUser = JSON.parse(storedUser);
-        showMainApp();
-        return true;
+        try {
+            currentUser = JSON.parse(storedUser);
+            console.log('Parsed currentUser:', currentUser);
+            showMainApp();
+            return true;
+        } catch (error) {
+            console.error('Error parsing stored user:', error);
+            localStorage.removeItem('currentUser');
+        }
     }
     showLoginPage();
     return false;
@@ -110,6 +119,24 @@ function updateDashboardUserInfo() {
             filterUser.value = 'currentUser';  // Show only user's reports for regular users
         }
     }
+}
+
+// ฟังก์ชันทดสอบการล็อกอิน
+async function testLogin() {
+    console.log('=== Test Login Started ===');
+    
+    // เติมข้อมูลในฟอร์ม
+    document.getElementById('userCode').value = 'P13';
+    document.getElementById('password').value = 'admin123';
+    
+    // สร้าง fake event
+    const fakeEvent = {
+        preventDefault: () => {},
+        target: document.getElementById('loginForm')
+    };
+    
+    // เรียกใช้ handleLogin
+    await handleLogin(fakeEvent);
 }
 
 async function handleLogin(event) {
@@ -430,10 +457,13 @@ function populateProcessSelect() {
         .map(p => `<option value="${p}">${p}</option>`)
         .join('');
     
-    // Add event listener for process change
-    sel.addEventListener('change', function() {
-        updateErrorOptions(this.value);
-    });
+    // Add event listener for process change (only if not already added)
+    if (!sel.dataset.listenerAdded) {
+        sel.addEventListener('change', function() {
+            updateErrorOptions(this.value);
+        });
+        sel.dataset.listenerAdded = 'true';
+    }
 }
 
 // อัปเดตตัวเลือกข้อผิดพลาดตามกระบวนการที่เลือก
