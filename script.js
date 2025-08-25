@@ -847,6 +847,9 @@ async function loadData() {
         updateDashboard(errorData, filteredData);
         populateTable(filteredData);
         
+        // Generate advanced analytics
+        generateAdvancedAnalytics(filteredData);
+        
         // Update dashboard user info
         updateDashboardUserInfo();
         
@@ -1024,6 +1027,65 @@ function updateDashboard(allData, filteredData) {
     document.getElementById('groupErrors').textContent = groupCount;
     document.getElementById('monthlyErrors').textContent = monthlyCount;
     document.getElementById('weeklyErrors').textContent = weeklyCount;
+    
+    // Calculate and update trend indicator
+    updateTrendIndicator(allData, thisMonth, thisYear);
+}
+
+// Calculate trend indicator
+function updateTrendIndicator(allData, thisMonth, thisYear) {
+    const trendEl = document.getElementById('trendIndicator');
+    if (!trendEl) return;
+
+    try {
+        let thisMonthCount = 0;
+        let lastMonthCount = 0;
+        
+        const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+        const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
+
+        allData.forEach(row => {
+            if (!row[0] || !row[1]) return;
+            
+            try {
+                const errorDate = new Date(row[0]);
+                if (isNaN(errorDate.getTime())) return;
+                
+                const month = errorDate.getMonth();
+                const year = errorDate.getFullYear();
+                
+                if (month === thisMonth && year === thisYear) {
+                    thisMonthCount++;
+                } else if (month === lastMonth && year === lastMonthYear) {
+                    lastMonthCount++;
+                }
+            } catch (e) {
+                // Skip invalid dates
+            }
+        });
+
+        if (lastMonthCount === 0) {
+            trendEl.textContent = thisMonthCount > 0 ? '↗ ใหม่' : '-';
+            trendEl.style.color = thisMonthCount > 0 ? '#ffc107' : '#6c757d';
+        } else {
+            const percentChange = ((thisMonthCount - lastMonthCount) / lastMonthCount * 100);
+            
+            if (percentChange > 10) {
+                trendEl.textContent = `↗ +${percentChange.toFixed(0)}%`;
+                trendEl.style.color = '#dc3545';
+            } else if (percentChange < -10) {
+                trendEl.textContent = `↘ ${percentChange.toFixed(0)}%`;
+                trendEl.style.color = '#28a745';
+            } else {
+                trendEl.textContent = '→ คงที่';
+                trendEl.style.color = '#17a2b8';
+            }
+        }
+    } catch (error) {
+        console.error('Error calculating trend:', error);
+        trendEl.textContent = '-';
+        trendEl.style.color = '#6c757d';
+    }
 }
 
 // Helper function to format dates and handle invalid dates
@@ -1064,7 +1126,18 @@ function populateTable(data) {
     const tableBody = document.getElementById('errorTableBody');
     
     if (!data || data.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="no-data">ไม่มีข้อมูลที่ตรงกับตัวกรอง</td></tr>';
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="no-data">
+                    <div class="no-data-content">
+                        <i class="fas fa-database"></i>
+                        <p>ไม่มีข้อมูลที่ตรงกับตัวกรอง</p>
+                        <small>ลองปรับเปลี่ยนตัวกรองหรือรีเฟรชข้อมูล</small>
+                    </div>
+                </td>
+            </tr>
+        `;
+        updateTablePagination(0, 0);
         return;
     }
 
@@ -1079,25 +1152,41 @@ function populateTable(data) {
     }
 
     if (workingData.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="no-data">ไม่มีข้อมูลที่ตรงกับตัวกรอง</td></tr>';
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="no-data">
+                    <div class="no-data-content">
+                        <i class="fas fa-database"></i>
+                        <p>ไม่มีข้อมูลที่ตรงกับตัวกรอง</p>
+                        <small>ลองปรับเปลี่ยนตัวกรองหรือรีเฟรชข้อมูล</small>
+                    </div>
+                </td>
+            </tr>
+        `;
+        updateTablePagination(0, 0);
         return;
     }
 
-    const rows = workingData.slice(0, 50).filter(row => {
+    // Get page size
+    const pageSize = parseInt(document.getElementById('tablePageSize')?.value || '25');
+    const validRows = workingData.filter(row => {
         // Filter out empty rows - check if row has timestamp and report ID
         return row && row[0] && row[1] && 
                row[0].toString().trim() !== '' && 
                row[1].toString().trim() !== '';
-    }).map(row => { // Limit to 50 rows for performance
+    });
+
+    const displayRows = validRows.slice(0, pageSize).map(row => {
         // Validate and format data
         const reportId = row[1] || 'N/A';
         
         // Better date handling using formatDate function
-        const { date: formattedDate, time: formattedTime } = formatDate(row[0]);
-        
+        const { date: formattedDate } = formatDate(row[0]);
+        const shift = row[2] || 'N/A'; // เวร
         const errorType = row[3] || 'N/A';
         const location = row[4] || 'N/A';
         const process = row[5] || 'N/A';
+        const error = row[6] || 'N/A'; // ข้อผิดพลาด
         const reporter = row[11] || 'N/A'; // ผู้รายงาน in column 11
 
         // Highlight current user's reports
@@ -1108,25 +1197,417 @@ function populateTable(data) {
             reporter === currentUser.id13
         );
         
-        const rowClass = isMyReport ? 'my-report' : '';
+        // Check for high priority errors (example criteria)
+        const isHighPriority = error.includes('ยาผิด') || error.includes('ขนาดผิด') || 
+                              error.includes('คนไข้ผิด') || process.includes('จ่ายยา');
+        
+        let rowClass = '';
+        if (isMyReport) rowClass += ' my-report';
+        if (isHighPriority) rowClass += ' high-priority';
 
         return `
             <tr class="${rowClass}">
                 <td>${reportId}</td>
                 <td>${formattedDate}</td>
-                <td>${formattedTime}</td>
+                <td>${shift}</td>
                 <td>${errorType}</td>
                 <td>${location}</td>
                 <td>${process}</td>
+                <td>${error}</td>
                 <td>${reporter}</td>
+                <td>
+                    <button class="btn-view" onclick="viewErrorDetail('${reportId}')" title="ดูรายละเอียด">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
             </tr>
         `;
     }).join('');
 
-    tableBody.innerHTML = rows;
+    tableBody.innerHTML = displayRows;
     
-    if (workingData.length > 50) {
-        tableBody.innerHTML += `<tr><td colspan="7" class="no-data">แสดง 50 รายการแรกจากทั้งหมด ${workingData.length} รายการ</td></tr>`;
+    // Update pagination info
+    updateTablePagination(Math.min(pageSize, validRows.length), validRows.length);
+    
+    // Initialize table features
+    initializeTableFeatures();
+}
+
+// Update table pagination information
+function updateTablePagination(showing, total) {
+    const showingStart = document.getElementById('showingStart');
+    const showingEnd = document.getElementById('showingEnd');
+    const totalRecords = document.getElementById('totalRecords');
+    
+    if (showingStart) showingStart.textContent = showing > 0 ? '1' : '0';
+    if (showingEnd) showingEnd.textContent = showing.toString();
+    if (totalRecords) totalRecords.textContent = total.toString();
+}
+
+// Initialize table features (sorting, search, etc.)
+function initializeTableFeatures() {
+    // Add table sorting
+    addTableSorting();
+    
+    // Add search functionality
+    addTableSearch();
+}
+
+// Add table sorting functionality
+function addTableSorting() {
+    const table = document.getElementById('errorTable');
+    if (!table) return;
+
+    const headers = table.querySelectorAll('th.sortable');
+    headers.forEach((header, index) => {
+        header.addEventListener('click', () => {
+            const currentSort = header.getAttribute('data-sort-direction') || 'asc';
+            const newSort = currentSort === 'asc' ? 'desc' : 'asc';
+            
+            // Reset all other headers
+            headers.forEach(h => {
+                h.setAttribute('data-sort-direction', '');
+                h.querySelector('i').className = 'fas fa-sort';
+            });
+            
+            // Set current header
+            header.setAttribute('data-sort-direction', newSort);
+            const icon = header.querySelector('i');
+            icon.className = newSort === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+            
+            sortTableByColumn(index, newSort === 'asc');
+        });
+    });
+}
+
+// Sort table by column
+function sortTableByColumn(columnIndex, ascending = true) {
+    const table = document.getElementById('errorTable');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => 
+        !row.querySelector('.no-data-content')
+    );
+    
+    rows.sort((a, b) => {
+        const aText = a.cells[columnIndex]?.textContent.trim() || '';
+        const bText = b.cells[columnIndex]?.textContent.trim() || '';
+        
+        // Try to parse as numbers or dates first
+        const aNum = parseFloat(aText);
+        const bNum = parseFloat(bText);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return ascending ? aNum - bNum : bNum - aNum;
+        }
+        
+        // Try to parse as dates
+        const aDate = new Date(aText);
+        const bDate = new Date(bText);
+        
+        if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+            return ascending ? aDate - bDate : bDate - aDate;
+        }
+        
+        // Default to string comparison
+        return ascending ? 
+            aText.localeCompare(bText, 'th', { numeric: true }) :
+            bText.localeCompare(aText, 'th', { numeric: true });
+    });
+    
+    // Re-append sorted rows
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// Add table search functionality
+function addTableSearch() {
+    const searchInput = document.getElementById('tableSearch');
+    if (!searchInput) return;
+
+    // Remove existing event listeners
+    searchInput.replaceWith(searchInput.cloneNode(true));
+    const newSearchInput = document.getElementById('tableSearch');
+
+    newSearchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase().trim();
+        filterTableRows(searchTerm);
+    });
+}
+
+// Filter table rows based on search term
+function filterTableRows(searchTerm) {
+    const table = document.getElementById('errorTable');
+    const tbody = table.querySelector('tbody');
+    const rows = tbody.querySelectorAll('tr');
+    
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        if (row.querySelector('.no-data-content')) {
+            return; // Skip no-data rows
+        }
+        
+        const rowText = Array.from(row.cells)
+            .slice(0, 8) // Exclude action column
+            .map(cell => cell.textContent.toLowerCase())
+            .join(' ');
+        
+        const isVisible = searchTerm === '' || rowText.includes(searchTerm);
+        row.style.display = isVisible ? '' : 'none';
+        
+        if (isVisible) visibleCount++;
+    });
+    
+    // Update table statistics
+    const totalRecords = document.getElementById('totalRecords');
+    const originalTotal = totalRecords ? parseInt(totalRecords.textContent) : 0;
+    updateTablePagination(visibleCount, originalTotal);
+}
+
+// View error detail function
+function viewErrorDetail(reportId) {
+    showNotification(`กำลังโหลดรายละเอียดของรายงาน: ${reportId}`, 'info');
+    
+    // Future implementation: Open modal with detailed error information
+    // For now, just show a notification
+    setTimeout(() => {
+        showNotification(`รายงาน ${reportId}: รายละเอียดจะแสดงในเวอร์ชันถัดไป`, 'info');
+    }, 1000);
+}
+
+// Set current date as default in form
+function setCurrentDate() {
+    const eventDateInput = document.getElementById('eventDate');
+    if (eventDateInput) {
+        // Get current date in YYYY-MM-DD format
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const currentDate = `${year}-${month}-${day}`;
+        
+        eventDateInput.value = currentDate;
+        console.log('Set current date:', currentDate);
+    }
+}
+
+// Enhanced form initialization
+function initializeFormDefaults() {
+    // Set current date
+    setCurrentDate();
+    
+    // Setup enhanced form with validation
+    setupFormEnhanced();
+    
+    // Reset form to initial state
+    const form = document.getElementById('errorForm');
+    if (form) {
+        form.reset();
+        
+        // Set current date again after reset
+        setTimeout(() => {
+            setCurrentDate();
+        }, 100);
+    }
+    
+    // Clear any previous error messages
+    clearFormErrors();
+    
+    // Focus on first input
+    const firstInput = document.getElementById('shift');
+    if (firstInput) {
+        firstInput.focus();
+    }
+}
+
+// Clear form validation errors
+function clearFormErrors() {
+    const formGroups = document.querySelectorAll('.form-group');
+    formGroups.forEach(group => {
+        group.classList.remove('has-error');
+        const errorMsg = group.querySelector('.error-message');
+        if (errorMsg) {
+            errorMsg.remove();
+        }
+    });
+}
+
+// Enhanced form validation
+function validateForm() {
+    let isValid = true;
+    const errors = [];
+    
+    // Clear previous errors
+    clearFormErrors();
+    
+    // Required fields validation
+    const requiredFields = [
+        { id: 'eventDate', name: 'วันที่เกิดเหตุการณ์' },
+        { id: 'shift', name: 'เวร' },
+        { id: 'errorType', name: 'ประเภท' },
+        { id: 'location', name: 'สถานที่เกิดเหตุการณ์' },
+        { id: 'process', name: 'กระบวนการ' },
+        { id: 'errorDetail', name: 'ข้อผิดพลาด' },
+        { id: 'correctItem', name: 'รายการที่ถูกต้อง' },
+        { id: 'cause', name: 'สาเหตุ' }
+    ];
+    
+    requiredFields.forEach(field => {
+        const element = document.getElementById(field.id);
+        if (element && (!element.value || element.value.trim() === '')) {
+            isValid = false;
+            errors.push(field.name);
+            
+            // Add visual error indication
+            const formGroup = element.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('has-error');
+                
+                // Add error message
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'error-message';
+                errorMsg.textContent = `กรุณากรอก${field.name}`;
+                formGroup.appendChild(errorMsg);
+            }
+        }
+    });
+    
+    // Date validation (not in future)
+    const eventDate = document.getElementById('eventDate');
+    if (eventDate && eventDate.value) {
+        const selectedDate = new Date(eventDate.value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // End of today
+        
+        if (selectedDate > today) {
+            isValid = false;
+            errors.push('วันที่เกิดเหตุการณ์ไม่สามารถเป็นวันในอนาคตได้');
+            
+            const formGroup = eventDate.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('has-error');
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'error-message';
+                errorMsg.textContent = 'วันที่เกิดเหตุการณ์ไม่สามารถเป็นวันในอนาคตได้';
+                formGroup.appendChild(errorMsg);
+            }
+        }
+    }
+    
+    // Show summary of errors
+    if (!isValid) {
+        const errorSummary = `กรุณาตรวจสอบข้อมูลต่อไปนี้:\n• ${errors.join('\n• ')}`;
+        showNotification(errorSummary, 'error');
+        
+        // Scroll to first error
+        const firstError = document.querySelector('.form-group.has-error');
+        if (firstError) {
+            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+    
+    return isValid;
+}
+
+// Real-time form validation
+function setupFormValidation() {
+    const form = document.getElementById('errorForm');
+    if (!form) return;
+    
+    // Add event listeners for real-time validation
+    const inputs = form.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            validateField(this);
+        });
+        
+        input.addEventListener('input', function() {
+            // Clear error state on input
+            const formGroup = this.closest('.form-group');
+            if (formGroup && formGroup.classList.contains('has-error')) {
+                formGroup.classList.remove('has-error');
+                const errorMsg = formGroup.querySelector('.error-message');
+                if (errorMsg) {
+                    errorMsg.remove();
+                }
+            }
+        });
+    });
+    
+    // Special handling for date input
+    const eventDate = document.getElementById('eventDate');
+    if (eventDate) {
+        eventDate.addEventListener('change', function() {
+            validateField(this);
+        });
+    }
+}
+
+// Validate individual field
+function validateField(field) {
+    const formGroup = field.closest('.form-group');
+    if (!formGroup) return;
+    
+    let isValid = true;
+    let errorMessage = '';
+    
+    // Clear previous error
+    formGroup.classList.remove('has-error', 'has-success');
+    const existingError = formGroup.querySelector('.error-message');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Check if field is required
+    const requiredFields = ['eventDate', 'shift', 'errorType', 'location', 'process', 'errorDetail', 'correctItem', 'cause'];
+    const isRequired = requiredFields.includes(field.id);
+    
+    if (isRequired && (!field.value || field.value.trim() === '')) {
+        isValid = false;
+        errorMessage = `กรุณากรอก${field.previousElementSibling?.textContent || 'ข้อมูล'}`;
+    }
+    
+    // Date validation
+    if (field.id === 'eventDate' && field.value) {
+        const selectedDate = new Date(field.value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        
+        if (selectedDate > today) {
+            isValid = false;
+            errorMessage = 'วันที่เกิดเหตุการณ์ไม่สามารถเป็นวันในอนาคตได้';
+        }
+    }
+    
+    // Apply validation state
+    if (!isValid) {
+        formGroup.classList.add('has-error');
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = errorMessage;
+        formGroup.appendChild(errorDiv);
+    } else if (field.value && field.value.trim() !== '') {
+        formGroup.classList.add('has-success');
+    }
+    
+    return isValid;
+}
+
+// Enhanced form setup
+function setupFormEnhanced() {
+    setupForm();
+    setupFormValidation();
+    
+    // Add form submit handler with validation
+    const form = document.getElementById('errorForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (validateForm()) {
+                submitForm();
+            }
+        });
     }
 }
 
@@ -1156,6 +1637,9 @@ function initializeApp() {
     
     // Load saved configuration
     loadConfig();
+    
+    // Initialize form defaults (including current date and validation)
+    initializeFormDefaults();
     
     // Initialize form
     initializeForm();
@@ -1754,3 +2238,655 @@ window.predisApp = {
     validateDrugInput,
     handleDrugFormSubmit
 };
+
+// ===== ENHANCED ANALYTICS FUNCTIONS =====
+
+// Global analytics data
+let analyticsData = {
+    processData: {},
+    causeData: {},
+    locationData: {},
+    timeData: { morning: 0, afternoon: 0, night: 0 },
+    monthlyTrend: [],
+    insights: []
+};
+
+// Main analytics generation function
+function generateAdvancedAnalytics(data) {
+    console.log('Generating advanced analytics for data:', data);
+    
+    if (!data || data.length === 0) {
+        resetAllAnalytics();
+        return;
+    }
+
+    // Filter out header row and empty rows
+    const processedData = data.filter(row => {
+        return row && row[0] && row[1] && 
+               row[0].toString().trim() !== '' && 
+               row[1].toString().trim() !== '' &&
+               !row[0].toString().toLowerCase().includes('timestamp');
+    });
+
+    if (processedData.length === 0) {
+        resetAllAnalytics();
+        return;
+    }
+
+    // Process data for analytics
+    processAnalyticsData(processedData);
+    
+    // Generate charts
+    generateProcessChart();
+    generateCauseChart();
+    updateLocationRanking();
+    updateTimeDistribution();
+    generateMonthlyTrendChart();
+    
+    console.log('Analytics generation completed');
+}
+
+// Process data for analytics
+function processAnalyticsData(data) {
+    // Reset analytics data
+    analyticsData = {
+        processData: {},
+        causeData: {},
+        locationData: {},
+        timeData: { morning: 0, afternoon: 0, night: 0 },
+        monthlyTrend: [],
+        insights: []
+    };
+
+    const monthlyCount = {};
+    
+    data.forEach(row => {
+        if (!row || !row[0]) return;
+        
+        try {
+            // Process distribution
+            const process = (row[5] || 'ไม่ระบุ').toString().trim();
+            analyticsData.processData[process] = (analyticsData.processData[process] || 0) + 1;
+            
+            // Cause distribution
+            const cause = (row[7] || 'ไม่ระบุ').toString().trim();
+            analyticsData.causeData[cause] = (analyticsData.causeData[cause] || 0) + 1;
+            
+            // Location distribution
+            const location = (row[4] || 'ไม่ระบุ').toString().trim();
+            analyticsData.locationData[location] = (analyticsData.locationData[location] || 0) + 1;
+            
+            // Time distribution - ใช้ข้อมูลจากคอลัมน์เวรโดยตรง
+            const shift = (row[2] || '').toString().trim(); // คอลัมน์ C (index 2) ตามรูปภาพ Google Sheets
+            if (shift) {
+                if (shift === 'เช้า') {
+                    analyticsData.timeData.morning++;
+                } else if (shift === 'บ่าย') {
+                    analyticsData.timeData.afternoon++;
+                } else if (shift === 'ดึก') {
+                    analyticsData.timeData.night++;
+                }
+            }
+            
+            // Monthly trend - ใช้วันที่เกิดเหตุการณ์
+            const eventDateStr = (row[0] || '').toString().trim();
+            if (eventDateStr) {
+                const eventDate = new Date(eventDateStr);
+                if (!isNaN(eventDate.getTime())) {
+                    const monthKey = `${eventDate.getFullYear()}-${(eventDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                    monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
+                }
+            }
+        } catch (e) {
+            console.warn('Error processing row for analytics:', e, row);
+        }
+    });
+    
+    // Convert monthly data to array
+    analyticsData.monthlyTrend = Object.entries(monthlyCount)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-12); // Last 12 months
+}
+
+// Generate process distribution pie chart
+function generateProcessChart() {
+    const canvas = document.getElementById('processChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const processes = Object.keys(analyticsData.processData);
+    const counts = Object.values(analyticsData.processData);
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    
+    if (total === 0) {
+        drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลกระบวนการ');
+        return;
+    }
+
+    // Update summary
+    const topProcess = processes[counts.indexOf(Math.max(...counts))];
+    const topProcessCount = Math.max(...counts);
+    
+    document.getElementById('topProcess').textContent = topProcess || '-';
+    document.getElementById('topProcessCount').textContent = topProcessCount;
+
+    // Draw pie chart
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(centerX, centerY) - 60;
+    
+    const colors = [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+        '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+    ];
+    
+    let currentAngle = 0;
+    
+    processes.forEach((process, index) => {
+        const sliceAngle = (counts[index] / total) * 2 * Math.PI;
+        const color = colors[index % colors.length];
+        
+        // Draw slice
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Draw percentage label
+        if (sliceAngle > 0.1) { // Only show label if slice is large enough
+            const labelAngle = currentAngle + sliceAngle / 2;
+            const labelX = centerX + Math.cos(labelAngle) * (radius * 0.7);
+            const labelY = centerY + Math.sin(labelAngle) * (radius * 0.7);
+            
+            const percentage = ((counts[index] / total) * 100).toFixed(1);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.strokeText(`${percentage}%`, labelX, labelY);
+            ctx.fillText(`${percentage}%`, labelX, labelY);
+        }
+        
+        currentAngle += sliceAngle;
+    });
+    
+    // Draw legend
+    const legendStartY = 20;
+    processes.forEach((process, index) => {
+        const y = legendStartY + (index * 25);
+        const color = colors[index % colors.length];
+        const percentage = ((counts[index] / total) * 100).toFixed(1);
+        
+        if (y < canvas.height - 30) { // Only draw if within canvas
+            ctx.fillStyle = color;
+            ctx.fillRect(10, y - 10, 15, 15);
+            
+            ctx.fillStyle = '#333';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'left';
+            const text = `${process.substring(0, 15)}${process.length > 15 ? '...' : ''} (${percentage}%)`;
+            ctx.fillText(text, 30, y);
+        }
+    });
+}
+
+// Generate cause distribution bar chart
+function generateCauseChart() {
+    const canvas = document.getElementById('causeChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const causes = Object.keys(analyticsData.causeData);
+    const counts = Object.values(analyticsData.causeData);
+    
+    if (causes.length === 0) {
+        drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลสาเหตุ');
+        return;
+    }
+
+    // Sort and get top 8 causes
+    const sortedData = causes.map((cause, index) => ({
+        cause,
+        count: counts[index]
+    })).sort((a, b) => b.count - a.count).slice(0, 8);
+
+    const topCause = sortedData[0]?.cause || '-';
+    document.getElementById('topCause').textContent = topCause;
+
+    const maxCount = Math.max(...sortedData.map(item => item.count));
+    const barWidth = (canvas.width - 100) / sortedData.length;
+    const maxBarHeight = canvas.height - 100;
+    
+    sortedData.forEach((item, index) => {
+        const barHeight = (item.count / maxCount) * maxBarHeight;
+        const x = 50 + (index * barWidth);
+        const y = canvas.height - 50 - barHeight;
+        
+        // Create gradient
+        const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
+        gradient.addColorStop(0, '#36A2EB');
+        gradient.addColorStop(1, '#1E88E5');
+        
+        // Draw bar
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, barWidth - 15, barHeight);
+        
+        // Draw count on top of bar
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.count, x + (barWidth - 15) / 2, y - 5);
+        
+        // Draw cause label (rotated)
+        ctx.save();
+        ctx.translate(x + (barWidth - 15) / 2, canvas.height - 25);
+        ctx.rotate(-Math.PI / 6);
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'right';
+        const labelText = item.cause.length > 10 ? item.cause.substring(0, 10) + '...' : item.cause;
+        ctx.fillText(labelText, 0, 0);
+        ctx.restore();
+    });
+    
+    // Draw axes
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(50, 50);
+    ctx.lineTo(50, canvas.height - 50);
+    ctx.lineTo(canvas.width - 50, canvas.height - 50);
+    ctx.stroke();
+}
+
+// Update location ranking
+function updateLocationRanking() {
+    const container = document.getElementById('locationRanking');
+    if (!container) return;
+
+    const locations = Object.entries(analyticsData.locationData)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5);
+
+    if (locations.length === 0) {
+        container.innerHTML = `
+            <div class="ranking-item">
+                <div class="rank-badge">-</div>
+                <div class="location-info">
+                    <div class="location-name">ไม่มีข้อมูล</div>
+                    <div class="location-count">0 ครั้ง</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = locations.map(([location, count], index) => `
+        <div class="ranking-item">
+            <div class="rank-badge">${index + 1}</div>
+            <div class="location-info">
+                <div class="location-name">${location}</div>
+                <div class="location-count">${count} ครั้ง</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Update time distribution - ใช้ข้อมูลจากตารางเวร
+function updateTimeDistribution() {
+    const { morning, afternoon, night } = analyticsData.timeData;
+    const total = morning + afternoon + night;
+    
+    // Update counts
+    document.getElementById('morningCount').textContent = morning;
+    document.getElementById('afternoonCount').textContent = afternoon;
+    document.getElementById('nightCount').textContent = night;
+    
+    if (total === 0) {
+        // Reset bars and percentages
+        ['morning', 'afternoon', 'night'].forEach(time => {
+            document.getElementById(`${time}Bar`).style.width = '0%';
+            document.getElementById(`${time}Percent`).textContent = '0%';
+        });
+        return;
+    }
+    
+    // Update bars and percentages with animation
+    const morningPercent = ((morning / total) * 100).toFixed(1);
+    const afternoonPercent = ((afternoon / total) * 100).toFixed(1);
+    const nightPercent = ((night / total) * 100).toFixed(1);
+    
+    // Animate the bars
+    setTimeout(() => {
+        document.getElementById('morningBar').style.width = `${morningPercent}%`;
+        document.getElementById('afternoonBar').style.width = `${afternoonPercent}%`;
+        document.getElementById('nightBar').style.width = `${nightPercent}%`;
+    }, 100);
+    
+    document.getElementById('morningPercent').textContent = `${morningPercent}%`;
+    document.getElementById('afternoonPercent').textContent = `${afternoonPercent}%`;
+    document.getElementById('nightPercent').textContent = `${nightPercent}%`;
+    
+    // Log detailed shift analysis
+    console.log(`📊 การกระจายตามเวรจาก Database:`);
+    console.log(`   เช้า: ${morning} ครั้ง (${morningPercent}%)`);
+    console.log(`   บ่าย: ${afternoon} ครั้ง (${afternoonPercent}%)`);
+    console.log(`   ดึก: ${night} ครั้ง (${nightPercent}%)`);
+    console.log(`   รวม: ${total} ครั้ง`);
+}
+
+// แสดงข้อมูลเชิงลึกของการกระจายตามเวร
+function displayShiftInsights(morningCount, afternoonCount, nightCount, totalCount) {
+    if (totalCount === 0) return;
+    
+    const morningPercent = (morningCount / totalCount) * 100;
+    const afternoonPercent = (afternoonCount / totalCount) * 100;
+    const nightPercent = (nightCount / totalCount) * 100;
+    
+    // หาเวรที่มีปัญหามากที่สุดและน้อยที่สุด
+    const shifts = [
+        { name: 'เช้า', count: morningCount, percent: morningPercent },
+        { name: 'บ่าย', count: afternoonCount, percent: afternoonPercent },
+        { name: 'ดึก', count: nightCount, percent: nightPercent }
+    ];
+    
+    shifts.sort((a, b) => b.count - a.count);
+    
+    const insights = [];
+    
+    // วิเคราะห์เวรที่มีปัญหามากที่สุด
+    if (shifts[0].count > 0) {
+        insights.push(`เวร${shifts[0].name} มีข้อผิดพลาดมากที่สุด (${shifts[0].count} ครั้ง, ${shifts[0].percent.toFixed(1)}%)`);
+    }
+    
+    // วิเคราะห์ความแตกต่างระหว่างเวร
+    const maxPercent = shifts[0].percent;
+    const minPercent = shifts[2].percent;
+    const difference = maxPercent - minPercent;
+    
+    if (difference > 30) {
+        insights.push(`ความแตกต่างระหว่างเวรสูง: ${difference.toFixed(1)}% (${shifts[0].name} vs ${shifts[2].name})`);
+    } else if (difference < 10) {
+        insights.push(`การกระจายข้อผิดพลาดระหว่างเวรค่อนข้างสมดุล`);
+    }
+    
+    // แสดงผลลัพธ์ใน console สำหรับการ debug
+    console.log('=== การวิเคราะห์เวรเชิงลึก ===');
+    insights.forEach(insight => console.log(`📊 ${insight}`));
+    
+    // อัปเดต UI ถ้ามี element สำหรับแสดงข้อมูลเพิ่มเติม
+    const shiftInsightElement = document.getElementById('shiftInsights');
+    if (shiftInsightElement) {
+        shiftInsightElement.innerHTML = insights.map(insight => `<p><i class="fas fa-lightbulb"></i> ${insight}</p>`).join('');
+    }
+}
+
+// Generate monthly trend chart
+function generateMonthlyTrendChart() {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const trendData = analyticsData.monthlyTrend;
+    
+    if (trendData.length === 0) {
+        drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลแนวโน้ม');
+        return;
+    }
+    
+    const months = trendData.map(([month]) => month);
+    const counts = trendData.map(([, count]) => count);
+    const maxCount = Math.max(...counts, 1);
+    
+    // Update trend insights
+    updateTrendInsights(months, counts);
+    
+    const marginLeft = 60;
+    const marginBottom = 60;
+    const marginTop = 40;
+    const marginRight = 40;
+    const chartWidth = canvas.width - marginLeft - marginRight;
+    const chartHeight = canvas.height - marginBottom - marginTop;
+    
+    // Draw background grid
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.lineWidth = 1;
+    
+    // Horizontal grid lines
+    for (let i = 0; i <= 5; i++) {
+        const y = marginTop + (i * chartHeight / 5);
+        ctx.beginPath();
+        ctx.moveTo(marginLeft, y);
+        ctx.lineTo(marginLeft + chartWidth, y);
+        ctx.stroke();
+    }
+    
+    // Vertical grid lines
+    for (let i = 0; i <= months.length - 1; i++) {
+        const x = marginLeft + (i * chartWidth / (months.length - 1));
+        ctx.beginPath();
+        ctx.moveTo(x, marginTop);
+        ctx.lineTo(x, marginTop + chartHeight);
+        ctx.stroke();
+    }
+    
+    // Draw axes
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(marginLeft, marginTop);
+    ctx.lineTo(marginLeft, marginTop + chartHeight);
+    ctx.lineTo(marginLeft + chartWidth, marginTop + chartHeight);
+    ctx.stroke();
+    
+    // Draw trend line and area
+    if (months.length > 1) {
+        const pointSpacing = chartWidth / (months.length - 1);
+        
+        // Create gradient for area fill
+        const gradient = ctx.createLinearGradient(0, marginTop, 0, marginTop + chartHeight);
+        gradient.addColorStop(0, 'rgba(54, 162, 235, 0.3)');
+        gradient.addColorStop(1, 'rgba(54, 162, 235, 0.1)');
+        
+        // Draw area
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(marginLeft, marginTop + chartHeight);
+        
+        months.forEach((month, index) => {
+            const x = marginLeft + (index * pointSpacing);
+            const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
+            
+            if (index === 0) {
+                ctx.lineTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        
+        ctx.lineTo(marginLeft + chartWidth, marginTop + chartHeight);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Draw trend line
+        ctx.strokeStyle = '#36A2EB';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        
+        months.forEach((month, index) => {
+            const x = marginLeft + (index * pointSpacing);
+            const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
+            
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        
+        ctx.stroke();
+        
+        // Draw points
+        months.forEach((month, index) => {
+            const x = marginLeft + (index * pointSpacing);
+            const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
+            
+            // Point background
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Point border
+            ctx.strokeStyle = '#36A2EB';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Count label
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(counts[index], x, y - 12);
+        });
+    }
+    
+    // Draw Y-axis labels
+    ctx.fillStyle = '#666';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    
+    for (let i = 0; i <= 5; i++) {
+        const value = Math.round((maxCount / 5) * (5 - i));
+        const y = marginTop + (i * chartHeight / 5);
+        ctx.fillText(value.toString(), marginLeft - 10, y + 4);
+    }
+    
+    // Draw X-axis labels
+    ctx.textAlign = 'center';
+    months.forEach((month, index) => {
+        const x = marginLeft + (index * chartWidth / (months.length - 1));
+        ctx.save();
+        ctx.translate(x, marginTop + chartHeight + 15);
+        ctx.rotate(-Math.PI / 6);
+        ctx.fillText(month, 0, 0);
+        ctx.restore();
+    });
+}
+
+// Update trend insights
+function updateTrendInsights(months, counts) {
+    if (months.length === 0) {
+        document.getElementById('peakMonth').textContent = '-';
+        document.getElementById('lowMonth').textContent = '-';
+        document.getElementById('changeRate').textContent = '-';
+        return;
+    }
+    
+    const maxIndex = counts.indexOf(Math.max(...counts));
+    const minIndex = counts.indexOf(Math.min(...counts));
+    
+    document.getElementById('peakMonth').textContent = months[maxIndex];
+    document.getElementById('lowMonth').textContent = months[minIndex];
+    
+    if (months.length >= 2) {
+        const lastCount = counts[counts.length - 1];
+        const previousCount = counts[counts.length - 2];
+        
+        if (previousCount === 0) {
+            document.getElementById('changeRate').textContent = lastCount > 0 ? '+100%' : '0%';
+        } else {
+            const changeRate = ((lastCount - previousCount) / previousCount * 100).toFixed(1);
+            document.getElementById('changeRate').textContent = `${changeRate > 0 ? '+' : ''}${changeRate}%`;
+        }
+    } else {
+        document.getElementById('changeRate').textContent = '-';
+    }
+}
+
+// Helper function to draw "no data" message on canvas
+function drawNoDataMessage(ctx, canvas, message) {
+    ctx.fillStyle = '#ccc';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+}
+
+// Reset all analytics
+function resetAllAnalytics() {
+    // Reset charts
+    ['processChart', 'causeChart', 'trendChart'].forEach(chartId => {
+        const canvas = document.getElementById(chartId);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูล');
+        }
+    });
+    
+    // Reset summary data
+    document.getElementById('topProcess').textContent = '-';
+    document.getElementById('topProcessCount').textContent = '0';
+    document.getElementById('topCause').textContent = '-';
+    
+    // Reset time distribution
+    ['morning', 'afternoon', 'night'].forEach(time => {
+        document.getElementById(`${time}Count`).textContent = '0';
+        document.getElementById(`${time}Bar`).style.width = '0%';
+        document.getElementById(`${time}Percent`).textContent = '0%';
+    });
+    
+    // Reset trend insights
+    document.getElementById('peakMonth').textContent = '-';
+    document.getElementById('lowMonth').textContent = '-';
+    document.getElementById('changeRate').textContent = '-';
+    
+    // Reset location ranking
+    const locationRanking = document.getElementById('locationRanking');
+    if (locationRanking) {
+        locationRanking.innerHTML = `
+            <div class="ranking-item">
+                <div class="rank-badge">-</div>
+                <div class="location-info">
+                    <div class="location-name">ไม่มีข้อมูล</div>
+                    <div class="location-count">0 ครั้ง</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Reset insights
+    document.getElementById('riskFactors').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
+    document.getElementById('improvements').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
+    document.getElementById('recommendations').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
+}
+
+// Export functions
+function exportAnalytics() {
+    showNotification('กำลังเตรียมไฟล์การวิเคราะห์...', 'info');
+    // Future implementation: Generate and download analytics report
+}
+
+function exportTableData() {
+    showNotification('กำลังส่งออกข้อมูลตาราง...', 'info');
+    // Future implementation: Export table data to Excel
+}
+
+function refreshChart(chartType) {
+    showNotification(`กำลังรีเฟรชกราฟ ${chartType}...`, 'info');
+    // Future implementation: Refresh specific chart
+}
+
+function updateTrendChart() {
+    const period = document.getElementById('trendPeriod').value;
+    showNotification(`กำลังอัพเดตแนวโน้ม ${period} เดือน...`, 'info');
+    // Future implementation: Update trend chart with selected period
+}
