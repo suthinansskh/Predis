@@ -1595,7 +1595,6 @@ function validateField(field) {
 
 // Enhanced form setup
 function setupFormEnhanced() {
-    setupForm();
     setupFormValidation();
     
     // Add form submit handler with validation
