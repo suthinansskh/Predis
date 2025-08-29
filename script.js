@@ -92,8 +92,8 @@ function updateReporterField() {
         reporterEl.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
         // ถ้าไม่มี currentUser ให้แสดงข้อความรอ
-        reporterEl.value = 'กรุณาเข้าสู่ระบบก่อนใช้งาน';
-        console.log('No currentUser found, showing login message');
+        reporterEl.value = 'รอโหลดชื่อผู้ใช้งาน...';
+        console.log('No currentUser found, showing placeholder message');
     }
 }
 
@@ -394,6 +394,15 @@ function initializeForm() {
     
     // Add search functionality to drug input fields
     setupDrugSearchInputs();
+    
+    // Set reporter name
+    const reporterEl = document.getElementById('reporter');
+    if (reporterEl && currentUser) {
+        const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
+        reporterEl.value = reporterValue;
+    } else if (reporterEl) {
+        reporterEl.value = 'รอโหลดชื่อผู้ใช้งาน...';
+    }
 }
 
 // รายการกระบวนการ (สามารถปรับแก้หรือเพิ่มได้ง่าย)
@@ -484,7 +493,10 @@ function updateErrorOptions(selectedProcess) {
     }
 }
 
-// Generate unique report ID
+// Global variable to track used report IDs
+let usedReportIds = new Set();
+
+// Generate unique report ID with duplicate prevention
 function generateReportId() {
     const now = new Date();
     const year = now.getFullYear().toString().slice(-2);
@@ -493,10 +505,33 @@ function generateReportId() {
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
     
-    // Format: PE + YYMMDD + HHMMSS (PE = Predispensing Error)
-    const reportId = `PE${year}${month}${day}${hours}${minutes}${seconds}`;
-    document.getElementById('reportId').value = reportId;
+    // Format: PE + YYMMDD + HHMMSS + XXX (milliseconds for uniqueness)
+    let reportId = `PE${year}${month}${day}${hours}${minutes}${seconds}`;
+    
+    // If this ID is already used, add milliseconds
+    if (usedReportIds.has(reportId)) {
+        reportId += milliseconds;
+    }
+    
+    // If still duplicate (very rare), add random number
+    let counter = 1;
+    const baseId = reportId;
+    while (usedReportIds.has(reportId)) {
+        reportId = baseId + String(counter).padStart(2, '0');
+        counter++;
+    }
+    
+    // Store the used ID
+    usedReportIds.add(reportId);
+    
+    const reportIdEl = document.getElementById('reportId');
+    if (reportIdEl) {
+        reportIdEl.value = reportId;
+    }
+    
+    console.log('Generated unique Report ID:', reportId);
     return reportId;
 }
 
@@ -541,6 +576,55 @@ async function appendToGoogleSheet(data) {
                 try {
                     const result = await response.json();
                     if (result.error) {
+                        // ตรวจสอบถ้าเป็น error จากการซ้ำ
+                        if (result.duplicate && result.reportId) {
+                            // สร้าง Report ID ใหม่และลองอีกครั้ง
+                            console.log('Duplicate Report ID detected, generating new ID...');
+                            data.reportId = generateReportId();
+                            
+                            // ลองส่งอีกครั้งด้วย Report ID ใหม่
+                            const retryFormData = new FormData();
+                            retryFormData.append('action', 'append');
+                            retryFormData.append('sheetName', googleSheetsConfig.sheetName);
+                            
+                            // Add all data with new Report ID
+                            retryFormData.append('eventDate', data.eventDate);
+                            retryFormData.append('reportId', data.reportId);
+                            retryFormData.append('shift', data.shift);
+                            retryFormData.append('errorType', data.errorType);
+                            let loc = data.location;
+                            if (loc === 'รพ.สต.' && data.substation) {
+                                loc = `${loc}${data.substation}`;
+                            }
+                            retryFormData.append('location', loc);
+                            retryFormData.append('process', data.process);
+                            retryFormData.append('errorDetail', data.errorDetail);
+                            retryFormData.append('correctItem', data.correctItem);
+                            retryFormData.append('incorrectItem', data.incorrectItem);
+                            retryFormData.append('cause', data.cause);
+                            retryFormData.append('additionalDetails', data.additionalDetails || '');
+                            retryFormData.append('reporter', data.reporter);
+                            
+                            const retryResponse = await fetch(googleSheetsConfig.webAppUrl, {
+                                method: 'POST',
+                                body: retryFormData,
+                                redirect: 'follow'
+                            });
+                            
+                            if (retryResponse.ok || retryResponse.redirected) {
+                                const retryResult = await retryResponse.json();
+                                if (retryResult.error) {
+                                    throw new Error(retryResult.error);
+                                }
+                                return { 
+                                    success: true, 
+                                    message: 'บันทึกข้อมูลสำเร็จ (สร้าง Report ID ใหม่)',
+                                    newReportId: data.reportId 
+                                };
+                            } else {
+                                throw new Error('ไม่สามารถบันทึกข้อมูลได้แม้หลังจากสร้าง Report ID ใหม่');
+                            }
+                        }
                         throw new Error(result.error);
                     }
                     return result;
@@ -761,6 +845,14 @@ async function handleFormSubmit(event) {
     const formData = new FormData(event.target);
     const errorData = Object.fromEntries(formData.entries());
     
+    // ตรวจสอบและเพิ่มข้อมูล HAD อัตโนมัติ
+    const hadInfo = await checkAndRecordHAD(errorData);
+    if (hadInfo) {
+        errorData.hadInvolved = hadInfo.isHAD;
+        errorData.hadDrugName = hadInfo.hadDrugs.join(', ');
+        errorData.hadRiskLevel = hadInfo.riskLevel;
+    }
+    
     // ใช้ eventDate ที่ผู้ใช้เลือก (ไม่ต้องรวมเวลา)
     if (errorData.eventDate) {
         // ไม่ต้องเพิ่มเวลาปัจจุบัน ใช้แค่วันที่เกิดเหตุการณ์
@@ -787,9 +879,17 @@ async function handleFormSubmit(event) {
         submitBtn.innerHTML = '<div class="loading"></div> กำลังบันทึก...';
         submitBtn.disabled = true;
 
-        await appendToGoogleSheet(errorData);
+        const result = await appendToGoogleSheet(errorData);
         
-        showNotification('บันทึกข้อผิดพลาดเรียบร้อยแล้ว!', 'success');
+        // แสดงการแจ้งเตือนพร้อม Report ID ที่ใช้
+        let successMessage = 'บันทึกข้อผิดพลาดเรียบร้อยแล้ว!';
+        if (result && result.newReportId) {
+            successMessage = `บันทึกข้อผิดพลาดเรียบร้อยแล้ว!\n📝 Report ID: ${result.newReportId} (สร้างใหม่เนื่องจากซ้ำ)`;
+        } else {
+            successMessage = `บันทึกข้อผิดพลาดเรียบร้อยแล้ว!\n📝 Report ID: ${errorData.reportId}`;
+        }
+        
+        showNotification(successMessage, 'success');
         event.target.reset();
         initializeForm();
         
@@ -802,6 +902,141 @@ async function handleFormSubmit(event) {
         submitBtn.innerHTML = '<i class="fas fa-save"></i> บันทึก';
         submitBtn.disabled = false;
     }
+}
+
+// ตรวจสอบและบันทึกรายการ HAD อัตโนมัติ
+async function checkAndRecordHAD(errorData) {
+    try {
+        const hadInfo = {
+            isHAD: false,
+            hadDrugs: [],
+            riskLevel: 'Regular'
+        };
+        
+        // ดึงรายการยาที่เกี่ยวข้องจากฟิลด์ต่างๆ
+        const drugFields = [
+            errorData.correctItem,
+            errorData.incorrectItem,
+            errorData.errorDetail
+        ];
+        
+        // ตรวจสอบแต่ละฟิลด์ว่ามียา HAD หรือไม่
+        for (const field of drugFields) {
+            if (field) {
+                const hadDrugsFound = await findHADInText(field);
+                if (hadDrugsFound.length > 0) {
+                    hadInfo.isHAD = true;
+                    hadInfo.hadDrugs.push(...hadDrugsFound);
+                    hadInfo.riskLevel = 'High';
+                }
+            }
+        }
+        
+        // ลบรายการซ้ำ
+        hadInfo.hadDrugs = [...new Set(hadInfo.hadDrugs)];
+        
+        // แสดงผลใน UI
+        updateHADDisplay(hadInfo);
+        
+        // แสดงการแจ้งเตือนถ้าพบ HAD
+        if (hadInfo.isHAD) {
+            showNotification(`⚠️ ตรวจพบ High Alert Drugs: ${hadInfo.hadDrugs.join(', ')}`, 'warning');
+            console.log('HAD Detected:', hadInfo);
+        }
+        
+        return hadInfo;
+        
+    } catch (error) {
+        console.error('Error checking HAD:', error);
+        console.log('GlobalDrugList sample:', globalDrugList.slice(0, 3));
+        console.log('GlobalDrugList length:', globalDrugList.length);
+        return null;
+    }
+}
+
+// อัปเดตการแสดงผล HAD ใน UI
+function updateHADDisplay(hadInfo) {
+    const hadSection = document.querySelector('.had-section');
+    const hadDrugsList = document.getElementById('hadDrugsList');
+    const hadRiskLevel = document.getElementById('hadRiskLevel');
+    
+    // อัปเดต hidden fields
+    document.getElementById('hadInvolved').value = hadInfo.isHAD;
+    document.getElementById('hadDrugName').value = hadInfo.hadDrugs.join(', ');
+    document.querySelector('input[name="hadRiskLevel"]').value = hadInfo.riskLevel;
+    
+    if (hadInfo.isHAD && hadInfo.hadDrugs.length > 0) {
+        // แสดง HAD section
+        hadSection.style.display = 'block';
+        
+        // แสดงรายการยา HAD
+        hadDrugsList.innerHTML = hadInfo.hadDrugs
+            .map(drug => `<span class="had-drug-item">${drug}</span>`)
+            .join('');
+        
+        // อัปเดตระดับความเสี่ยง
+        hadRiskLevel.textContent = hadInfo.riskLevel === 'High' ? 'สูง' : 'ปกติ';
+        hadRiskLevel.className = `risk-badge ${hadInfo.riskLevel === 'High' ? 'risk-high' : 'risk-regular'}`;
+        
+    } else {
+        // ซ่อน HAD section
+        hadSection.style.display = 'none';
+        hadDrugsList.innerHTML = '';
+    }
+}
+
+// ค้นหา HAD ในข้อความ
+async function findHADInText(text) {
+    if (!text || !globalDrugList.length) return [];
+    
+    const hadDrugsFound = [];
+    const textLower = text.toLowerCase();
+    
+    // ตรวจสอบกับรายการยา HAD ในฐานข้อมูล
+    for (const drug of globalDrugList) {
+        if (drug.had === 'High') {
+            // ตรวจสอบประเภทข้อมูลก่อนใช้ toLowerCase()
+            const drugName = drug.drugName && typeof drug.drugName === 'string' ? drug.drugName : '';
+            const drugCode = drug.drugCode && typeof drug.drugCode === 'string' ? drug.drugCode : '';
+            
+            if (!drugName && !drugCode) continue; // ข้ามถ้าไม่มีข้อมูล
+            
+            const drugNameLower = drugName.toLowerCase();
+            const drugCodeLower = drugCode.toLowerCase();
+            
+            // ตรวจสอบชื่อยาและรหัสยา
+            if ((drugNameLower && textLower.includes(drugNameLower)) || 
+                (drugCodeLower && textLower.includes(drugCodeLower))) {
+                hadDrugsFound.push(drugName || drugCode);
+            }
+            
+            // ตรวจสอบส่วนของชื่อยา (เช่น Insulin, Warfarin)
+            if (drugNameLower) {
+                const mainDrugName = drugNameLower.split(' ')[0];
+                if (mainDrugName.length > 4 && textLower.includes(mainDrugName)) {
+                    hadDrugsFound.push(drugName);
+                }
+            }
+        }
+    }
+    
+    return [...new Set(hadDrugsFound)]; // ลบรายการซ้ำ
+}
+
+// ตรวจสอบ HAD แบบ real-time
+async function checkHADRealtime() {
+    const correctItem = document.getElementById('correctItem')?.value || '';
+    const incorrectItem = document.getElementById('incorrectItem')?.value || '';
+    const errorDetail = document.getElementById('errorDetail')?.value || '';
+    
+    const mockData = {
+        correctItem,
+        incorrectItem, 
+        errorDetail
+    };
+    
+    const hadInfo = await checkAndRecordHAD(mockData);
+    return hadInfo;
 }
 
 // Settings form handler
@@ -841,6 +1076,9 @@ async function loadData() {
         const hasHeader = data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('timestamp');
         const errorData = hasHeader ? data.slice(1) : data;
         
+        // เก็บ Report IDs ที่มีอยู่แล้วเพื่อป้องกันการซ้ำ
+        loadExistingReportIds(data);
+        
         // Apply user-based filtering
         const filteredData = applyUserFilter(errorData);
         
@@ -862,6 +1100,25 @@ async function loadData() {
         const loadBtn = document.querySelector('.load-btn');
         loadBtn.innerHTML = '<i class="fas fa-sync"></i> รีเฟรชข้อมูล';
         loadBtn.disabled = false;
+    }
+}
+
+// Load existing Report IDs to prevent duplicates
+function loadExistingReportIds(data) {
+    usedReportIds.clear(); // เคลียร์ก่อน
+    
+    if (Array.isArray(data) && data.length > 0) {
+        data.forEach((row, index) => {
+            // Skip header row
+            if (index === 0 || !Array.isArray(row)) return;
+            
+            const reportId = row[1]; // คอลัมน์ B = Report ID
+            if (reportId && typeof reportId === 'string') {
+                usedReportIds.add(reportId);
+            }
+        });
+        
+        console.log(`Loaded ${usedReportIds.size} existing Report IDs for duplicate prevention`);
     }
 }
 
@@ -1518,6 +1775,11 @@ function setupFormValidation() {
     inputs.forEach(input => {
         input.addEventListener('blur', function() {
             validateField(this);
+            
+            // ตรวจสอบ HAD เมื่อพิมพ์ข้อมูลในฟิลด์ยา
+            if (['correctItem', 'incorrectItem', 'errorDetail'].includes(this.id)) {
+                checkHADRealtime();
+            }
         });
         
         input.addEventListener('input', function() {
@@ -1529,6 +1791,14 @@ function setupFormValidation() {
                 if (errorMsg) {
                     errorMsg.remove();
                 }
+            }
+            
+            // ตรวจสอบ HAD แบบ real-time สำหรับฟิลด์ยา
+            if (['correctItem', 'incorrectItem', 'errorDetail'].includes(this.id)) {
+                clearTimeout(this.hadCheckTimeout);
+                this.hadCheckTimeout = setTimeout(() => {
+                    checkHADRealtime();
+                }, 500); // Debounce 500ms
             }
         });
     });
@@ -1604,7 +1874,7 @@ function setupFormEnhanced() {
             e.preventDefault();
             
             if (validateForm()) {
-                submitForm();
+                handleFormSubmit(e);
             }
         });
     }
@@ -1751,9 +2021,15 @@ async function loadDrugList() {
                 { drugCode: 'WAR5', drugName: 'Warfarin 5mg', group: 'Anticoagulant', had: 'High', status: 'Active' },
                 { drugCode: 'ATR025', drugName: 'Atorvastatin 20mg', group: 'Statin', had: 'Regular', status: 'Active' }
             ];
-            globalDrugList = sampleDrugs;
+            
+            // ทำความสะอาดและตรวจสอบข้อมูล
+            globalDrugList = cleanDrugData(sampleDrugs);
             setupDrugSearchInputs();
-            console.log('โหลดข้อมูลยาตัวอย่าง:', sampleDrugs.length, 'รายการ');
+            console.log('โหลดข้อมูลยาตัวอย่าง:', globalDrugList.length, 'รายการ');
+            
+            // แสดงรายการ HAD จากข้อมูลตัวอย่าง
+            displayHADListFromDatabase(globalDrugList);
+            
             return sampleDrugs;
         }
 
@@ -1772,9 +2048,17 @@ async function loadDrugList() {
             
             if (result.success) {
                 drugListData = result.data || [];
+                
+                // ทำความสะอาดและอัปเดต globalDrugList
+                globalDrugList = cleanDrugData(drugListData);
+                
                 renderDrugTable();
                 updateDrugStats();
                 showNotification(`โหลดรายการยาเรียบร้อย (${result.count} รายการ)`, 'success');
+                
+                // แสดงรายการ HAD จากฐานข้อมูล
+                displayHADListFromDatabase(globalDrugList);
+                
                 return;
             } else {
                 throw new Error(result.error || 'Unknown error from Web App');
@@ -1885,8 +2169,15 @@ async function loadDrugListFromAPI() {
             console.log('No drug data found in sheet');
         }
         
+        // ทำความสะอาดและอัปเดต globalDrugList
+        globalDrugList = cleanDrugData(drugListData);
+        
         renderDrugTable();
         updateDrugStats();
+        
+        // แสดงรายการ HAD จากฐานข้อมูล
+        displayHADListFromDatabase(globalDrugList);
+        
         showNotification(`โหลดรายการยาเรียบร้อย (ผ่าน API) - ${drugListData.length} รายการ`, 'success');
         
     } catch (error) {
@@ -1913,9 +2204,110 @@ function createSampleDrugData() {
     ];
     
     console.log('Sample drug data created:', drugListData.length, 'items');
+    
+    // ทำความสะอาดและอัปเดต globalDrugList
+    globalDrugList = cleanDrugData(drugListData);
+    
     renderDrugTable();
     updateDrugStats();
+    
+    // แสดงรายการ HAD จากข้อมูลตัวอย่าง
+    displayHADListFromDatabase(globalDrugList);
+    
     showNotification('ใช้ข้อมูลตัวอย่าง - กรุณาตั้งค่า API หรือ Apps Script ให้ถูกต้อง', 'info');
+}
+
+// ฟังก์ชันแสดงรายการ HAD จากฐานข้อมูล
+function displayHADListFromDatabase(drugList) {
+    console.log('🚨 === รายการ High Alert Drugs (HAD) จากฐานข้อมูล ===');
+    
+    // กรองเฉพาะยา HAD
+    const hadDrugs = drugList.filter(drug => drug.had === 'High' && drug.status === 'Active');
+    
+    if (hadDrugs.length === 0) {
+        console.log('❌ ไม่พบรายการ HAD ในฐานข้อมูล');
+        showNotification('ไม่พบรายการ High Alert Drugs ในฐานข้อมูล', 'warning');
+        return;
+    }
+    
+    console.log(`🎯 พบ High Alert Drugs จำนวน: ${hadDrugs.length} รายการ`);
+    console.log('');
+    
+    // จัดกลุ่มตาม group
+    const groupedHAD = {};
+    hadDrugs.forEach(drug => {
+        if (!groupedHAD[drug.group]) {
+            groupedHAD[drug.group] = [];
+        }
+        groupedHAD[drug.group].push(drug);
+    });
+    
+    // แสดงรายการแยกตามกลุ่ม
+    Object.keys(groupedHAD).forEach(group => {
+        console.log(`📂 กลุ่ม: ${group} (${groupedHAD[group].length} รายการ)`);
+        groupedHAD[group].forEach((drug, index) => {
+            console.log(`   ${index + 1}. ${drug.drugCode} - ${drug.drugName}`);
+        });
+        console.log('');
+    });
+    
+    // แสดงสรุป
+    console.log('📊 สรุปรายการ HAD:');
+    console.log(`   - รวมทั้งหมด: ${hadDrugs.length} รายการ`);
+    console.log(`   - แยกเป็น: ${Object.keys(groupedHAD).length} กลุ่ม`);
+    console.log(`   - กลุ่มยา: ${Object.keys(groupedHAD).join(', ')}`);
+    
+    // แสดงการแจ้งเตือน
+    showNotification(`🚨 พบ High Alert Drugs: ${hadDrugs.length} รายการ แยกเป็น ${Object.keys(groupedHAD).length} กลุ่ม`, 'warning');
+    
+    // อัปเดต global list สำหรับ HAD detection
+    globalDrugList = drugList;
+    
+    return hadDrugs;
+}
+
+// ฟังก์ชันทำความสะอาดข้อมูลยา
+function cleanDrugData(drugList) {
+    if (!Array.isArray(drugList)) {
+        console.warn('DrugList is not an array:', drugList);
+        return [];
+    }
+    
+    return drugList.map(drug => {
+        // ตรวจสอบและแปลงข้อมูลให้เป็น string
+        const cleanedDrug = {
+            drugCode: drug.drugCode ? String(drug.drugCode).trim() : '',
+            drugName: drug.drugName ? String(drug.drugName).trim() : '',
+            group: drug.group ? String(drug.group).trim() : '',
+            had: drug.had ? String(drug.had).trim() : 'Regular',
+            status: drug.status ? String(drug.status).trim() : 'Active'
+        };
+        
+        // ตรวจสอบข้อมูลที่จำเป็น
+        if (!cleanedDrug.drugCode && !cleanedDrug.drugName) {
+            console.warn('Invalid drug data:', drug);
+            return null;
+        }
+        
+        return cleanedDrug;
+    }).filter(drug => drug !== null); // ลบรายการที่ไม่ถูกต้อง
+}
+
+// ฟังก์ชันแสดงรายการ HAD สำหรับเรียกจากปุ่ม
+function showHADList() {
+    console.log('🚨 === แสดงรายการ High Alert Drugs ===');
+    
+    // ใช้ข้อมูลจาก globalDrugList หรือ drugListData
+    const drugList = globalDrugList.length > 0 ? globalDrugList : 
+                    (window.drugListData && window.drugListData.length > 0 ? window.drugListData : []);
+    
+    if (drugList.length === 0) {
+        console.log('❌ ไม่มีข้อมูลยาในระบบ - กรุณาโหลดข้อมูลยาก่อน');
+        showNotification('ไม่มีข้อมูลยาในระบบ กรุณาโหลดรายการยาก่อน', 'warning');
+        return;
+    }
+    
+    displayHADListFromDatabase(drugList);
 }
 
 // Form submission fallback for loading drug list

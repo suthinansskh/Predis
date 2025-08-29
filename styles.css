@@ -369,6 +369,110 @@ nav {
     color: #888;
 }
 
+/* HAD (High Alert Drugs) Section Styles */
+.had-section {
+    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+    border: 2px solid #ffc107;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.had-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ffc107;
+}
+
+.had-alert i {
+    color: #dc3545;
+    font-size: 1.5rem;
+    animation: pulse 2s infinite;
+}
+
+.had-title {
+    font-weight: bold;
+    color: #856404;
+    font-size: 1.1rem;
+}
+
+.had-details {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.had-info label,
+.had-risk label {
+    display: block;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.had-drugs-list {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 40px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+.had-drug-item {
+    display: inline-block;
+    background: #dc3545;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin: 2px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.risk-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+
+.risk-high {
+    background: #dc3545;
+    color: white;
+}
+
+.risk-regular {
+    background: #28a745;
+    color: white;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .optional {
     color: #999;
     font-weight: normal;
@@ -406,6 +510,40 @@ nav {
 
 .load-btn:hover {
     background: #218838;
+}
+
+.had-btn {
+    background: #ff6b6b;
+    color: white;
+    border: 2px solid #ff5252;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+    position: relative;
+    overflow: hidden;
+}
+
+.had-btn:hover {
+    background: #ff5252;
+    border-color: #ff1744;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.had-btn:active {
+    transform: translateY(0);
+}
+
+.had-btn i {
+    margin-right: 8px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
 }
 
 /* Dashboard Styles */
