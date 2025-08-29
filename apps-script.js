@@ -102,6 +102,21 @@ function doPost(e) {
     if (data.action === 'append') {
       // Handle FormData format
       if (data.eventDate) {
+        // ตรวจสอบการซ้ำของ Report ID ก่อนบันทึก
+        const reportId = data.reportId;
+        if (reportId) {
+          const existingData = sheet.getDataRange().getValues();
+          const isDuplicate = existingData.some(row => row[1] === reportId); // คอลัมน์ B = Report ID
+          
+          if (isDuplicate) {
+            return jsonResponse({
+              error: 'Report ID ซ้ำ: ' + reportId + ' มีอยู่ในระบบแล้ว',
+              duplicate: true,
+              reportId: reportId
+            });
+          }
+        }
+        
         // แยกวันที่เกิดเหตุการณ์และ timestamp ให้ชัดเจน
         const rowData = [
           data.eventDate,              // วันที่เกิดเหตุการณ์ (ผู้ใช้เลือก)

@@ -232,6 +232,28 @@
                         <textarea id="additionalDetails" name="additionalDetails" rows="4" placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
                     </div>
 
+                    <!-- HAD Information Section -->
+                    <div class="form-group had-section" style="display: none;">
+                        <div class="had-alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span class="had-title">ตรวจพบ High Alert Drugs (HAD)</span>
+                        </div>
+                        <div class="had-details">
+                            <div class="had-info">
+                                <label>รายการ HAD ที่เกี่ยวข้อง:</label>
+                                <div id="hadDrugsList" class="had-drugs-list"></div>
+                            </div>
+                            <div class="had-risk">
+                                <label>ระดับความเสี่ยง:</label>
+                                <span id="hadRiskLevel" class="risk-badge risk-high">สูง</span>
+                            </div>
+                        </div>
+                        <!-- Hidden fields for HAD data -->
+                        <input type="hidden" id="hadInvolved" name="hadInvolved" value="false">
+                        <input type="hidden" id="hadDrugName" name="hadDrugName" value="">
+                        <input type="hidden" id="hadRiskLevel" name="hadRiskLevel" value="Regular">
+                    </div>
+
                     <div class="form-group">
                         <label for="reporter">ผู้รายงาน:</label>
                         <input type="text" id="reporter" name="reporter" readonly 
@@ -258,6 +280,9 @@
                 <div class="dashboard-controls">
                     <button onclick="loadData()" class="load-btn">
                         <i class="fas fa-sync"></i> รีเฟรชข้อมูล
+                    </button>
+                    <button onclick="showHADList()" class="had-btn" style="background: #ff6b6b; border-color: #ff5252;">
+                        <i class="fas fa-exclamation-triangle"></i> แสดงรายการ HAD
                     </button>
                     <button onclick="exportAnalytics()" class="export-btn">
                         <i class="fas fa-download"></i> ส่งออกการวิเคราะห์
