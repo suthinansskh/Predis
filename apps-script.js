@@ -102,6 +102,28 @@ function doPost(e) {
     if (data.action === 'append') {
       // Handle FormData format
       if (data.eventDate) {
+        // Idempotency token handling (prevent double append within short window)
+        var submissionToken = data.submissionToken;
+        if (submissionToken) {
+          try {
+            var cache = CacheService.getScriptCache();
+            var existing = cache.get(submissionToken);
+            if (existing) {
+              return jsonResponse({
+                success: true,
+                duplicate: true,
+                idempotent: true,
+                message: 'Duplicate submission ignored via token',
+                submissionToken: submissionToken
+              });
+            } else {
+              // store token for 10 minutes
+              cache.put(submissionToken, '1', 600);
+            }
+          } catch (cacheErr) {
+            // Non-fatal, continue without idempotency
+          }
+        }
         // ตรวจสอบการซ้ำของ Report ID ก่อนบันทึก
         const reportId = data.reportId;
         if (reportId) {
@@ -147,7 +169,8 @@ function doPost(e) {
       return jsonResponse({
         success: true,
         message: 'Data appended successfully',
-        timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
+  submissionToken: data.submissionToken || null
       });
     }
     

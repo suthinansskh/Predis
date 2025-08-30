@@ -495,6 +495,12 @@ function updateErrorOptions(selectedProcess) {
 
 // Global variable to track used report IDs
 let usedReportIds = new Set();
+// Submission control
+let isSubmitting = false;
+// Generate idempotency submission token
+function generateSubmissionToken() {
+    return 'SUB-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 10);
+}
 
 // Generate unique report ID with duplicate prevention
 function generateReportId() {
@@ -548,6 +554,7 @@ async function appendToGoogleSheet(data) {
             // Add each data field individually - ใช้ eventDate แทน timestamp
             formData.append('eventDate', data.eventDate);
             formData.append('reportId', data.reportId);
+            if (data.submissionToken) formData.append('submissionToken', data.submissionToken);
             formData.append('shift', data.shift);
             formData.append('errorType', data.errorType);
             let loc = data.location;
@@ -562,6 +569,7 @@ async function appendToGoogleSheet(data) {
             formData.append('cause', data.cause);
             formData.append('additionalDetails', data.additionalDetails || '');
             formData.append('reporter', data.reporter);
+            if (data.submissionToken) formData.append('submissionToken', data.submissionToken);
 
             // Create a simple POST request without custom headers
             const response = await fetch(googleSheetsConfig.webAppUrl, {
@@ -575,6 +583,10 @@ async function appendToGoogleSheet(data) {
                 // Try to parse JSON, but don't fail if it's not JSON
                 try {
                     const result = await response.json();
+                    if (result.idempotent && result.duplicate) {
+                        // Server signaled duplicate ignored via token
+                        return { success: true, message: 'บันทึกสำเร็จ (ป้องกันการบันทึกซ้ำ)' };
+                    }
                     if (result.error) {
                         // ตรวจสอบถ้าเป็น error จากการซ้ำ
                         if (result.duplicate && result.reportId) {
@@ -604,6 +616,7 @@ async function appendToGoogleSheet(data) {
                             retryFormData.append('cause', data.cause);
                             retryFormData.append('additionalDetails', data.additionalDetails || '');
                             retryFormData.append('reporter', data.reporter);
+                            if (data.submissionToken) retryFormData.append('submissionToken', data.submissionToken);
                             
                             const retryResponse = await fetch(googleSheetsConfig.webAppUrl, {
                                 method: 'POST',
@@ -841,9 +854,15 @@ function validateDrugInput(input) {
 // Form submission handler
 async function handleFormSubmit(event) {
     event.preventDefault();
-    
+    if (isSubmitting) {
+        console.warn('Duplicate submit prevented');
+        return;
+    }
+    isSubmitting = true;
     const formData = new FormData(event.target);
     const errorData = Object.fromEntries(formData.entries());
+    // Add idempotency submission token
+    errorData.submissionToken = generateSubmissionToken();
     
     // ตรวจสอบและเพิ่มข้อมูล HAD อัตโนมัติ
     const hadInfo = await checkAndRecordHAD(errorData);
@@ -901,6 +920,7 @@ async function handleFormSubmit(event) {
         const submitBtn = event.target.querySelector('.submit-btn');
         submitBtn.innerHTML = '<i class="fas fa-save"></i> บันทึก';
         submitBtn.disabled = false;
+    isSubmitting = false;
     }
 }
 
@@ -1870,13 +1890,16 @@ function setupFormEnhanced() {
     // Add form submit handler with validation
     const form = document.getElementById('errorForm');
     if (form) {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            if (validateForm()) {
-                handleFormSubmit(e);
-            }
-        });
+        // Ensure we don't attach multiple listeners
+        if (!form.dataset.listenerAttached) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (validateForm()) {
+                    handleFormSubmit(e);
+                }
+            });
+            form.dataset.listenerAttached = 'true';
+        }
     }
 }
 
@@ -1942,8 +1965,8 @@ function initializeApp() {
         });
     }
     
-    // Form event listeners
-    document.getElementById('errorForm').addEventListener('submit', handleFormSubmit);
+    // Form event listeners (single enhanced listener with validation)
+    setupFormEnhanced();
     document.getElementById('settingsForm').addEventListener('submit', handleSettingsSubmit);
     
     // Drug form event listener
