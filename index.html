@@ -277,93 +277,150 @@
                     <strong>ผู้ใช้:</strong> <span id="currentUserDisplay">-</span> | 
                     <strong>กลุ่ม:</strong> <span id="currentGroupDisplay">-</span>
                 </div>
-                <div class="dashboard-controls">
-                    <button onclick="loadData()" class="load-btn">
-                        <i class="fas fa-sync"></i> รีเฟรชข้อมูล
-                    </button>
-                    <button onclick="showHADList()" class="had-btn" style="background: #ff6b6b; border-color: #ff5252;">
-                        <i class="fas fa-exclamation-triangle"></i> แสดงรายการ HAD
-                    </button>
-                    <button onclick="exportAnalytics()" class="export-btn">
-                        <i class="fas fa-download"></i> ส่งออกการวิเคราะห์
-                    </button>
-                    <select id="filterUser">
-                        <option value="">ผู้รายงานทั้งหมด</option>
-                        <option value="currentUser">รายงานของฉัน</option>
-                        <option value="myGroup">กลุ่มของฉัน</option>
-                    </select>
-                    <select id="filterPeriod">
-                        <option value="">ช่วงเวลาทั้งหมด</option>
-                        <option value="today">วันนี้</option>
-                        <option value="week">7 วันที่ผ่านมา</option>
-                        <option value="month">เดือนนี้</option>
-                        <option value="quarter">3 เดือนที่ผ่านมา</option>
-                        <option value="year">ปีนี้</option>
-                    </select>
-                </div>
+
                 
-                <!-- Enhanced Statistics Grid -->
-                <div class="stats-grid">
+                <!-- SECTION 1: ภาพรวมระบบ -->
+                <h3 style="margin-top:10px;">ส่วนที่ 1: ภาพรวมระบบ</h3>
+                <div class="stats-grid" id="overviewStats">
                     <div class="stat-card primary">
-                        <div class="stat-icon">
-                            <i class="fas fa-exclamation-triangle"></i>
-                        </div>
+                        <div class="stat-icon"><i class="fas fa-database"></i></div>
                         <div class="stat-content">
-                            <h3>ข้อผิดพลาดทั้งหมด</h3>
-                            <div class="stat-number" id="totalErrors">0</div>
-                            <div class="stat-description">รายการทั้งหมด</div>
-                        </div>
-                    </div>
-                    <div class="stat-card success">
-                        <div class="stat-icon">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>รายงานของฉัน</h3>
-                            <div class="stat-number" id="myErrors">0</div>
-                            <div class="stat-description">รายงานโดยคุณ</div>
-                        </div>
-                    </div>
-                    <div class="stat-card info">
-                        <div class="stat-icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>กลุ่มของฉัน</h3>
-                            <div class="stat-number" id="groupErrors">0</div>
-                            <div class="stat-description">รายงานของกลุ่ม</div>
+                            <h3>ทั้งหมด (All Time)</h3>
+                            <div class="stat-number" id="totalAllTime">0</div>
+                            <div class="stat-description">รวมทุกช่วงเวลา</div>
                         </div>
                     </div>
                     <div class="stat-card warning">
-                        <div class="stat-icon">
-                            <i class="fas fa-calendar-alt"></i>
-                        </div>
+                        <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
                         <div class="stat-content">
                             <h3>เดือนนี้</h3>
-                            <div class="stat-number" id="monthlyErrors">0</div>
-                            <div class="stat-description">เดือนปัจจุบัน</div>
+                            <div class="stat-number" id="totalMonth">0</div>
+                            <div class="stat-description">รวมในเดือนปัจจุบัน</div>
                         </div>
                     </div>
                     <div class="stat-card secondary">
-                        <div class="stat-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
+                        <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
                         <div class="stat-content">
-                            <h3>7 วันที่ผ่านมา</h3>
-                            <div class="stat-number" id="weeklyErrors">0</div>
-                            <div class="stat-description">สัปดาห์ล่าสุด</div>
+                            <h3>7 วันล่าสุด</h3>
+                            <div class="stat-number" id="totalWeek">0</div>
+                            <div class="stat-description">ย้อนหลัง 7 วัน</div>
                         </div>
                     </div>
-                    <div class="stat-card trend">
-                        <div class="stat-icon">
-                            <i class="fas fa-chart-line"></i>
-                        </div>
+                    <div class="stat-card success">
+                        <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
                         <div class="stat-content">
-                            <h3>แนวโน้ม</h3>
-                            <div class="stat-number" id="trendIndicator">-</div>
-                            <div class="stat-description">เปรียบเทียบเดือนก่อน</div>
+                            <h3>วันนี้</h3>
+                            <div class="stat-number" id="totalToday">0</div>
+                            <div class="stat-description">ตั้งแต่ 00:00 น.</div>
                         </div>
                     </div>
+                </div>
+
+                <!-- SECTION 2: รายบุคคล -->
+                <h3 style="margin-top:30px;">ส่วนที่ 2: รายบุคคล (ผู้ใช้งาน)</h3>
+                <div class="card" style="padding:15px; margin-bottom:25px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <strong>สรุปรายงานตามผู้รายงาน</strong>
+                        <small>แสดงจำนวน (วันนี้ / 7 วัน / เดือนนี้ / ทั้งหมด)</small>
+                    </div>
+                    <!-- Current User Mini Stats -->
+                    <div id="userMiniStats" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px;">
+                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
+                            <div class="stat-content" style="padding:0;">
+                                <h4 style="font-size:14px; margin:0 0 4px;">วันนี้</h4>
+                                <div class="stat-number" id="userToday" style="font-size:20px;">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
+                            <div class="stat-content" style="padding:0;">
+                                <h4 style="font-size:14px; margin:0 0 4px;">7 วัน</h4>
+                                <div class="stat-number" id="userWeek" style="font-size:20px;">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
+                            <div class="stat-content" style="padding:0;">
+                                <h4 style="font-size:14px; margin:0 0 4px;">เดือนนี้</h4>
+                                <div class="stat-number" id="userMonth" style="font-size:20px;">0</div>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
+                            <div class="stat-content" style="padding:0;">
+                                <h4 style="font-size:14px; margin:0 0 4px;">ทั้งหมด</h4>
+                                <div class="stat-number" id="userAll" style="font-size:20px;">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Per-user breakdown table (filteredให้เฉพาะผู้ใช้ปัจจุบัน) -->
+                    <div style="margin-top:18px; overflow-x:auto;">
+                        <table class="data-table" style="min-width:480px;">
+                            <thead>
+                                <tr>
+                                    <th>ผู้รายงาน</th>
+                                    <th>วันนี้</th>
+                                    <th>7 วัน</th>
+                                    <th>เดือนนี้</th>
+                                    <th>ทั้งหมด</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userBreakdownBody">
+                                <tr><td colspan="5" style="text-align:center;">กำลังโหลด...</td></tr>
+                            </tbody>
+                        </table>
+                        <small style="display:block; margin-top:6px; color:#666;">หมายเหตุ: ตารางนี้แสดงเฉพาะข้อมูลของผู้ใช้ที่เข้าสู่ระบบ (สามารถขยายให้แสดงทุกคนได้ภายหลัง)</small>
+                    </div>
+                
+                </div>
+
+                <!-- SECTION 3: การวิเคราะห์เชิงลึก -->
+                <h3 style="margin-top:10px;">ส่วนที่ 3: การวิเคราะห์เชิงลึก (ตามตัวกรอง)</h3>
+                <!-- Analytics Filters -->
+                <div id="analyticsFilters" style="display:flex; flex-wrap:wrap; gap:12px; margin:10px 0 20px; align-items:flex-end; background:#f9fafc; padding:12px; border:1px solid #e0e6ef; border-radius:8px;">
+                    <div style="display:flex; flex-direction:column; min-width:160px;">
+                        <label for="analyticsErrorType" style="font-size:12px; font-weight:600; color:#333;">ประเภทผู้ป่วย</label>
+                        <select id="analyticsErrorType" style="padding:6px 8px;">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
+                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; min-width:140px;">
+                        <label for="analyticsPeriodMode" style="font-size:12px; font-weight:600; color:#333;">โหมดช่วงเวลา</label>
+                        <select id="analyticsPeriodMode" style="padding:6px 8px;">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="year">ปี</option>
+                            <option value="month">เดือน</option>
+                        </select>
+                    </div>
+                    <div id="analyticsYearWrapper" style="display:none; flex-direction:column; min-width:120px;">
+                        <label for="analyticsYear" style="font-size:12px; font-weight:600; color:#333;">ปี</label>
+                        <select id="analyticsYear" style="padding:6px 8px;"></select>
+                    </div>
+                    <div id="analyticsMonthWrapper" style="display:none; flex-direction:column; min-width:140px;">
+                        <label for="analyticsMonth" style="font-size:12px; font-weight:600; color:#333;">เดือน</label>
+                        <select id="analyticsMonth" style="padding:6px 8px;">
+                            <option value="01">มกราคม</option>
+                            <option value="02">กุมภาพันธ์</option>
+                            <option value="03">มีนาคม</option>
+                            <option value="04">เมษายน</option>
+                            <option value="05">พฤษภาคม</option>
+                            <option value="06">มิถุนายน</option>
+                            <option value="07">กรกฎาคม</option>
+                            <option value="08">สิงหาคม</option>
+                            <option value="09">กันยายน</option>
+                            <option value="10">ตุลาคม</option>
+                            <option value="11">พฤศจิกายน</option>
+                            <option value="12">ธันวาคม</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:flex-end;">
+                        <button id="applyAnalyticsFilters" type="button" class="btn" style="background:#1976d2; color:#fff; padding:8px 14px; border-radius:6px; border:none; cursor:pointer;">
+                            <i class="fas fa-filter"></i> ใช้ตัวกรอง
+                        </button>
+                        <button id="resetAnalyticsFilters" type="button" class="btn" style="background:#607d8b; color:#fff; padding:8px 14px; border-radius:6px; border:none; cursor:pointer;">
+                            <i class="fas fa-undo"></i> รีเซ็ต
+                        </button>
+                    </div>
+                    <div id="analyticsFilterSummary" style="font-size:12px; color:#555; flex:1; min-width:200px;">ตัวกรอง: ทั้งหมด</div>
                 </div>
 
                 <!-- Analytics Charts Section -->
