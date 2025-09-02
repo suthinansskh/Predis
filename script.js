@@ -12,16 +12,39 @@ let googleSheetsConfig = {
     webAppUrl: 'https://script.google.com/macros/s/AKfycbzMfgXu9oscmYS_wXPX6rpdJeeZTj6w4uFxB_rPnYC8XVd6amwGGKHibHk5Iw2fw72E/exec' // ใส่ Google Apps Script Web App URL ที่ได้จาก Deploy
 };
 
+// Central demo users definition (ลดการซ้ำซ้อน)
+const DEMO_USERS = [
+    // เภสัชกร
+    { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
+    { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
+    { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
+    // เจ้าพนักงานเภสัชกรรม
+    { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+    { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+    { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
+    // Admin สำหรับทดสอบ
+    { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
+];
+
+function findDemoUser(userCode, password) {
+    const codeLower = userCode.toLowerCase();
+    return DEMO_USERS.find(u => (
+        (u.psCode && u.psCode.toLowerCase() === codeLower) ||
+        (u.id13 && u.id13.toLowerCase() === codeLower)
+    ) && u.password === password);
+}
+
 // Authentication and User Management
 function checkAuthentication() {
-    console.log('=== checkAuthentication called ===');
     const storedUser = localStorage.getItem('currentUser');
-    console.log('Stored user from localStorage:', storedUser);
     
     if (storedUser) {
         try {
             currentUser = JSON.parse(storedUser);
-            console.log('Parsed currentUser:', currentUser);
             showMainApp();
             return true;
         } catch (error) {
@@ -39,8 +62,6 @@ function showLoginPage() {
 }
 
 function showMainApp() {
-    console.log('=== showMainApp called ===');
-    console.log('currentUser at showMainApp:', currentUser);
     
     document.getElementById('login').style.display = 'none';
     document.getElementById('mainApp').style.display = 'block';
@@ -49,14 +70,10 @@ function showMainApp() {
     const userNameEl = document.getElementById('userName');
     if (userNameEl && currentUser) {
         userNameEl.textContent = currentUser.name || currentUser.psCode;
-        console.log('Updated userName element to:', userNameEl.textContent);
     }
     
     // Wait a bit for DOM to be ready then update reporter field
-    setTimeout(() => {
-        console.log('Calling updateReporterField from showMainApp');
-        updateReporterField();
-    }, 100);
+    setTimeout(() => { updateReporterField(); }, 100);
     
     // Update dashboard user info
     updateDashboardUserInfo();
@@ -66,17 +83,13 @@ function showMainApp() {
 }
 
 function updateReporterField() {
-    console.log('=== updateReporterField called ===');
-    console.log('currentUser:', currentUser);
     
     const reporterEl = document.getElementById('reporter');
-    console.log('Reporter element found:', !!reporterEl);
     
     if (!reporterEl) {
-        console.error('Reporter element not found in DOM!');
+    console.error('Reporter element not found in DOM');
         // Try to find it with query selector
         const altReporter = document.querySelector('input[name="reporter"]');
-        console.log('Alternative reporter element found:', !!altReporter);
         return;
     }
     
@@ -84,8 +97,6 @@ function updateReporterField() {
         // รูปแบบ: ชื่อ-นามสกุล (PS Code) - กลุ่ม/ระดับ
         const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
         reporterEl.value = reporterValue;
-        console.log('Reporter field updated to:', reporterValue);
-        console.log('Actual field value after update:', reporterEl.value);
         
         // Force visual update
         reporterEl.dispatchEvent(new Event('input', { bubbles: true }));
@@ -93,7 +104,6 @@ function updateReporterField() {
     } else {
         // ถ้าไม่มี currentUser ให้แสดงข้อความรอ
         reporterEl.value = 'รอโหลดชื่อผู้ใช้งาน...';
-        console.log('No currentUser found, showing placeholder message');
     }
 }
 
@@ -170,43 +180,20 @@ async function handleLogin(event) {
 async function authenticateUser(userCode, password) {
     // ตรวจสอบว่าตั้งค่า Google Apps Script หรือยัง
     if (!googleSheetsConfig.webAppUrl || googleSheetsConfig.webAppUrl.trim() === '') {
-        // Demo Mode: ใช้ข้อมูลผู้ใช้ตัวอย่างตามข้อมูลจริง
-        console.log('Demo Mode: ตรวจสอบผู้ใช้และรหัสผ่าน', userCode);
-        
-        const demoUsers = [
-            // เภสัชกร
-            { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
-            { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-            { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-            { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-            { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
-            { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '15091985', status: true },
-            { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
-            // เจ้าพนักงานเภสัชกรรม
-            { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-            { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-            { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
-            // Admin สำหรับทดสอบ
-            { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
-        ];
-        
-        const user = demoUsers.find(u => 
-            (u.psCode.toLowerCase() === userCode.toLowerCase() ||
-             u.id13.toLowerCase() === userCode.toLowerCase()) &&
-            u.password === password
-        );
+    // Demo Mode authentication
+    const user = findDemoUser(userCode, password);
         
         if (user) {
-            console.log('Demo Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
+            console.log('Demo login success', user.name);
             return user;
         } else {
-            console.log('Demo Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+            console.warn('Demo login failed for userCode:', userCode);
             return null;
         }
     } else {
         // Production Mode: ใช้ Google Apps Script เพื่อตรวจสอบผู้ใช้จากข้อมูลจริง
         try {
-            console.log('Production Mode: ตรวจสอบผู้ใช้และรหัสผ่านจาก Google Sheets', userCode);
+            console.log('Prod auth request', userCode);
             
             // ใช้ GET request เพื่อหลีกเลี่ยง CORS preflight
             const url = new URL(googleSheetsConfig.webAppUrl);
@@ -242,55 +229,28 @@ async function authenticateUser(userCode, password) {
             }
             
             if (user) {
-                console.log('Production Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
+                console.log('Prod login success', user.name);
                 return user;
             } else {
-                console.log('Production Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+                console.warn('Prod login failed for', userCode);
                 return null;
             }
             
         } catch (error) {
-            console.error('Production Mode Error:', error);
+            console.error('Prod auth error:', error.message);
             
             // Check if it's a CORS or network error and show appropriate message
             if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-                console.log('CORS error detected, falling back to Demo Mode');
+                console.warn('CORS error, fallback demo mode');
                 showNotification('⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้ (CORS Error) กำลังใช้โหมดทดสอบ', 'warning');
             } else {
-                console.log('Fallback to Demo Mode:', error.message);
+                console.warn('Fallback demo mode:', error.message);
                 showNotification('ไม่สามารถเชื่อมต่อ Google Sheets ได้ กำลังใช้โหมดทดสอบ', 'warning');
             }
             
-            const demoUsers = [
-                // เภสัชกร
-                { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
-                { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-                { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-                { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-                { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
-                { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '15091985', status: true },
-                { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
-                // เจ้าพนักงานเภสัชกรรม
-                { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-                { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-                { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
-                // Admin สำหรับทดสอบ
-                { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
-            ];
+            const user = findDemoUser(userCode, password);
             
-            const user = demoUsers.find(u => 
-                (u.psCode.toLowerCase() === userCode.toLowerCase() ||
-                 u.id13.toLowerCase() === userCode.toLowerCase()) &&
-                u.password === password
-            );
-            
-            if (user) {
-                console.log('Fallback Demo Mode: พบผู้ใช้และรหัสผ่านถูกต้อง', user.name);
-                return user;
-            } else {
-                console.log('Fallback Demo Mode: ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-                return null;
-            }
+            if (user) return user; else return null;
         }
     }
 }
@@ -979,13 +939,18 @@ function updateHADDisplay(hadInfo) {
     const hadSection = document.querySelector('.had-section');
     const hadDrugsList = document.getElementById('hadDrugsList');
     const hadRiskLevel = document.getElementById('hadRiskLevel');
+    if (!hadSection || !hadDrugsList || !hadRiskLevel) {
+        console.warn('HAD UI elements not found');
+    }
+    // อัปเดต hidden fields (ตรวจสอบก่อน)
+    const hadInvolvedEl = document.getElementById('hadInvolved');
+    if (hadInvolvedEl) hadInvolvedEl.value = hadInfo.isHAD;
+    const hadDrugNameEl = document.getElementById('hadDrugName');
+    if (hadDrugNameEl) hadDrugNameEl.value = hadInfo.hadDrugs.join(', ');
+    const hadRiskInput = document.querySelector('input[name="hadRiskLevel"]');
+    if (hadRiskInput) hadRiskInput.value = hadInfo.riskLevel;
     
-    // อัปเดต hidden fields
-    document.getElementById('hadInvolved').value = hadInfo.isHAD;
-    document.getElementById('hadDrugName').value = hadInfo.hadDrugs.join(', ');
-    document.querySelector('input[name="hadRiskLevel"]').value = hadInfo.riskLevel;
-    
-    if (hadInfo.isHAD && hadInfo.hadDrugs.length > 0) {
+    if (hadSection && hadDrugsList && hadRiskLevel && hadInfo.isHAD && hadInfo.hadDrugs.length > 0) {
         // แสดง HAD section
         hadSection.style.display = 'block';
         
@@ -998,8 +963,7 @@ function updateHADDisplay(hadInfo) {
         hadRiskLevel.textContent = hadInfo.riskLevel === 'High' ? 'สูง' : 'ปกติ';
         hadRiskLevel.className = `risk-badge ${hadInfo.riskLevel === 'High' ? 'risk-high' : 'risk-regular'}`;
         
-    } else {
-        // ซ่อน HAD section
+    } else if (hadSection && hadDrugsList) {
         hadSection.style.display = 'none';
         hadDrugsList.innerHTML = '';
     }
@@ -1081,9 +1045,12 @@ function handleSettingsSubmit(event) {
 async function loadData() {
     try {
         const loadBtn = document.querySelector('.load-btn');
-        const originalText = loadBtn.innerHTML;
-        loadBtn.innerHTML = '<div class="loading"></div> Loading...';
-        loadBtn.disabled = true;
+        let originalText = '';
+        if (loadBtn) {
+            originalText = loadBtn.innerHTML;
+            loadBtn.innerHTML = '<div class="loading"></div> Loading...';
+            loadBtn.disabled = true;
+        }
 
         const data = await readFromGoogleSheet();
         
@@ -1101,12 +1068,19 @@ async function loadData() {
         
         // Apply user-based filtering
         const filteredData = applyUserFilter(errorData);
+    lastUserFilteredData = filteredData.slice();
         
         updateDashboard(errorData, filteredData);
         populateTable(filteredData);
         
-        // Generate advanced analytics
-        generateAdvancedAnalytics(filteredData);
+        // Initialize analytics filter UI once
+        if (!window._analyticsFilterUIInitialized) {
+            initAnalyticsFilterUI();
+            window._analyticsFilterUIInitialized = true;
+        }
+
+        // Generate advanced analytics (respect analytics filters)
+        refreshAdvancedAnalytics();
         
         // Update dashboard user info
         updateDashboardUserInfo();
@@ -1118,8 +1092,10 @@ async function loadData() {
         showNotification(error.message, 'error');
     } finally {
         const loadBtn = document.querySelector('.load-btn');
-        loadBtn.innerHTML = '<i class="fas fa-sync"></i> รีเฟรชข้อมูล';
-        loadBtn.disabled = false;
+        if (loadBtn) {
+            loadBtn.innerHTML = '<i class="fas fa-sync"></i> รีเฟรชข้อมูล';
+            loadBtn.disabled = false;
+        }
     }
 }
 
@@ -1145,9 +1121,10 @@ function loadExistingReportIds(data) {
 // Apply user-based filtering based on current user and filter settings
 function applyUserFilter(data) {
     if (!currentUser || !data) return data;
-    
-    const filterUser = document.getElementById('filterUser').value;
-    const filterPeriod = document.getElementById('filterPeriod').value;
+    const filterUserEl = document.getElementById('filterUser');
+    const filterPeriodEl = document.getElementById('filterPeriod');
+    const filterUser = filterUserEl ? filterUserEl.value : '';
+    const filterPeriod = filterPeriodEl ? filterPeriodEl.value : '';
     
     let filteredData = data;
     
@@ -1206,6 +1183,117 @@ function applyUserFilter(data) {
     }
     
     return filteredData;
+}
+
+// ===== Analytics Filter State =====
+let lastUserFilteredData = [];
+let analyticsFilters = {
+    errorType: 'all', // 'all' | 'ผู้ป่วยนอก' | 'ผู้ป่วยใน'
+    periodMode: 'all', // 'all' | 'year' | 'month'
+    year: null,
+    month: null
+};
+
+function applyAnalyticsFiltersToData(baseData) {
+    if (!Array.isArray(baseData)) return [];
+    return baseData.filter(row => {
+        try {
+            // row indices: 0=date, 3=errorType
+            if (!row[0]) return false;
+            // Filter by error type
+            if (analyticsFilters.errorType !== 'all') {
+                const et = (row[3]||'').toString().trim();
+                if (et !== analyticsFilters.errorType) return false;
+            }
+            // Filter by period
+            if (analyticsFilters.periodMode !== 'all') {
+                const d = new Date(row[0]);
+                if (isNaN(d)) return false;
+                const y = d.getFullYear();
+                const m = (d.getMonth()+1).toString().padStart(2,'0');
+                if (analyticsFilters.periodMode === 'year') {
+                    if (!analyticsFilters.year || y.toString() !== analyticsFilters.year.toString()) return false;
+                } else if (analyticsFilters.periodMode === 'month') {
+                    if (!analyticsFilters.year || !analyticsFilters.month) return false;
+                    if (y.toString() !== analyticsFilters.year.toString() || m !== analyticsFilters.month) return false;
+                }
+            }
+            return true;
+        } catch { return false; }
+    });
+}
+
+function refreshAdvancedAnalytics() {
+    const filteredForAnalytics = applyAnalyticsFiltersToData(lastUserFilteredData);
+    generateAdvancedAnalytics(filteredForAnalytics);
+    updateAnalyticsFilterSummary();
+}
+
+function updateAnalyticsFilterSummary() {
+    const el = document.getElementById('analyticsFilterSummary');
+    if (!el) return;
+    let parts = [];
+    parts.push(analyticsFilters.errorType === 'all' ? 'ทุกประเภทผู้ป่วย' : analyticsFilters.errorType);
+    if (analyticsFilters.periodMode === 'all') {
+        parts.push('ทุกช่วงเวลา');
+    } else if (analyticsFilters.periodMode === 'year') {
+        parts.push('ปี ' + analyticsFilters.year);
+    } else if (analyticsFilters.periodMode === 'month') {
+        parts.push(`เดือน ${analyticsFilters.month}/${analyticsFilters.year}`);
+    }
+    el.textContent = 'ตัวกรอง: ' + parts.join(' | ');
+}
+
+function initAnalyticsFilterUI() {
+    const etSel = document.getElementById('analyticsErrorType');
+    const modeSel = document.getElementById('analyticsPeriodMode');
+    const yearSel = document.getElementById('analyticsYear');
+    const monthSel = document.getElementById('analyticsMonth');
+    const yearWrap = document.getElementById('analyticsYearWrapper');
+    const monthWrap = document.getElementById('analyticsMonthWrapper');
+    const applyBtn = document.getElementById('applyAnalyticsFilters');
+    const resetBtn = document.getElementById('resetAnalyticsFilters');
+
+    // Populate years from data (after data load we'll call populate)
+    function populateYears() {
+        if (!yearSel) return;
+        const dates = (lastUserFilteredData||[]).map(r=>r[0]).filter(Boolean);
+        const years = Array.from(new Set(dates.map(d=>{ const dd=new Date(d); if(!isNaN(dd)) return dd.getFullYear(); }).filter(Boolean))).sort();
+        yearSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+        if (!analyticsFilters.year && years.length>0) analyticsFilters.year = years[years.length-1];
+        if (analyticsFilters.year) yearSel.value = analyticsFilters.year;
+    }
+
+    if (modeSel) {
+        modeSel.addEventListener('change', ()=>{
+            analyticsFilters.periodMode = modeSel.value;
+            if (analyticsFilters.periodMode === 'year') {
+                yearWrap.style.display='flex';
+                monthWrap.style.display='none';
+                populateYears();
+            } else if (analyticsFilters.periodMode === 'month') {
+                yearWrap.style.display='flex';
+                monthWrap.style.display='flex';
+                populateYears();
+            } else {
+                yearWrap.style.display='none';
+                monthWrap.style.display='none';
+            }
+        });
+    }
+    if (etSel) etSel.addEventListener('change', ()=>{ analyticsFilters.errorType = etSel.value; });
+    if (yearSel) yearSel.addEventListener('change', ()=>{ analyticsFilters.year = yearSel.value; });
+    if (monthSel) monthSel.addEventListener('change', ()=>{ analyticsFilters.month = monthSel.value; });
+    if (applyBtn) applyBtn.addEventListener('click', refreshAdvancedAnalytics);
+    if (resetBtn) resetBtn.addEventListener('click', ()=>{
+        analyticsFilters = { errorType:'all', periodMode:'all', year:null, month:null };
+        if (etSel) etSel.value='all';
+        if (modeSel) modeSel.value='all';
+        yearWrap.style.display='none';
+        monthWrap.style.display='none';
+        refreshAdvancedAnalytics();
+    });
+    updateAnalyticsFilterSummary();
 }
 
 function updateDashboard(allData, filteredData) {
@@ -1299,13 +1387,32 @@ function updateDashboard(allData, filteredData) {
         });
     }
 
-    document.getElementById('totalErrors').textContent = totalCount;
-    document.getElementById('myErrors').textContent = myCount;
-    document.getElementById('groupErrors').textContent = groupCount;
-    document.getElementById('monthlyErrors').textContent = monthlyCount;
-    document.getElementById('weeklyErrors').textContent = weeklyCount;
-    
-    // Calculate and update trend indicator
+    // Legacy IDs (keep if still present but new layout uses different IDs)
+    const legacyTotal = document.getElementById('totalErrors');
+    if (legacyTotal) legacyTotal.textContent = totalCount;
+
+    // New Overview Section IDs
+    const todayCount = allData.filter(row => {
+        try {
+            const d = new Date(row[0]);
+            const nowDate = new Date();
+            return d.getFullYear() === nowDate.getFullYear() && d.getMonth() === nowDate.getMonth() && d.getDate() === nowDate.getDate();
+        } catch { return false; }
+    }).length;
+
+    const sevenDayCount = allData.filter(row => {
+        try { return new Date(row[0]) >= lastWeek; } catch { return false; }
+    }).length;
+
+    var elAllTime = document.getElementById('totalAllTime'); if (elAllTime) elAllTime.textContent = totalCount;
+    var elMonth = document.getElementById('totalMonth'); if (elMonth) elMonth.textContent = monthlyCount;
+    var elWeek = document.getElementById('totalWeek'); if (elWeek) elWeek.textContent = sevenDayCount;
+    var elToday = document.getElementById('totalToday'); if (elToday) elToday.textContent = todayCount;
+
+    // Per-user breakdown (Section 2)
+    buildUserBreakdownTable(allData);
+
+    // Trend indicator (reuse existing)
     updateTrendIndicator(allData, thisMonth, thisYear);
 }
 
@@ -1362,6 +1469,63 @@ function updateTrendIndicator(allData, thisMonth, thisYear) {
         console.error('Error calculating trend:', error);
         trendEl.textContent = '-';
         trendEl.style.color = '#6c757d';
+    }
+}
+
+// Build per-user breakdown table: today / 7 days / month / all
+function buildUserBreakdownTable(allData) {
+    const tbody = document.getElementById('userBreakdownBody');
+    if (!allData || allData.length === 0) {
+        // Reset mini stats to 0 when no data
+        ['userToday','userWeek','userMonth','userAll'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='0'; });
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">ไม่มีข้อมูล</td></tr>';
+        return;
+    }
+    const now = new Date();
+    const lastWeek = new Date(now.getTime() - 7*24*60*60*1000);
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    const userStats = {}; // reporter => {today, week, month, all}
+    allData.forEach((row, idx) => {
+        if (!row || !row[0] || !row[11]) return; // require date + reporter
+        const reporter = row[11];
+        if (!userStats[reporter]) userStats[reporter] = { today:0, week:0, month:0, all:0 };
+        userStats[reporter].all++;
+        let d;
+        try { d = new Date(row[0]); } catch { return; }
+        if (isNaN(d)) return;
+        if (d >= lastWeek) userStats[reporter].week++;
+        if (d.getFullYear() === thisYear && d.getMonth() === thisMonth) userStats[reporter].month++;
+        if (d.getFullYear() === thisYear && d.getMonth() === thisMonth && d.getDate() === now.getDate()) userStats[reporter].today++;
+    });
+
+    // If currentUser defined, restrict to only that user's entries
+    let entries = Object.entries(userStats);
+    if (typeof currentUser === 'object' && currentUser) {
+        const name = currentUser.name || '';
+        const ps = currentUser.psCode || '';
+        entries = entries.filter(([reporter]) => {
+            const r = reporter.toLowerCase();
+            return (name && r.includes(name.toLowerCase())) || (ps && r.includes(ps.toLowerCase()));
+        });
+    }
+    const rows = entries
+        .sort((a,b) => b[1].all - a[1].all)
+        .map(([name, s]) => `<tr><td>${name}</td><td>${s.today}</td><td>${s.week}</td><td>${s.month}</td><td>${s.all}</td></tr>`)
+        .join('');
+    if (tbody) tbody.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;">ไม่มีข้อมูล</td></tr>';
+
+    // Update mini stats for current user if exactly one row (filtered) or find current user aggregate
+    if (currentUser) {
+        const target = entries.find(([name]) => name.toLowerCase().includes((currentUser.name||'').toLowerCase()) || name.includes(currentUser.psCode||''));
+        if (target) {
+            const stats = target[1];
+            const elToday = document.getElementById('userToday'); if (elToday) elToday.textContent = stats.today;
+            const elWeek = document.getElementById('userWeek'); if (elWeek) elWeek.textContent = stats.week;
+            const elMonth = document.getElementById('userMonth'); if (elMonth) elMonth.textContent = stats.month;
+            const elAll = document.getElementById('userAll'); if (elAll) elAll.textContent = stats.all;
+        }
     }
 }
 
@@ -1451,6 +1615,18 @@ function populateTable(data) {
         return row && row[0] && row[1] && 
                row[0].toString().trim() !== '' && 
                row[1].toString().trim() !== '';
+    });
+
+    // Sort by date (column 0) descending (latest first)
+    validRows.sort((a,b)=>{
+        try {
+            const da = new Date(a[0]);
+            const db = new Date(b[0]);
+            if (isNaN(da) && isNaN(db)) return 0;
+            if (isNaN(da)) return 1;
+            if (isNaN(db)) return -1;
+            return db - da; // newest first
+        } catch { return 0; }
     });
 
     const displayRows = validRows.slice(0, pageSize).map(row => {
@@ -1566,8 +1742,10 @@ function sortTableByColumn(columnIndex, ascending = true) {
     );
     
     rows.sort((a, b) => {
-        const aText = a.cells[columnIndex]?.textContent.trim() || '';
-        const bText = b.cells[columnIndex]?.textContent.trim() || '';
+    const aCell = a.cells[columnIndex];
+    const bCell = b.cells[columnIndex];
+    const aText = aCell && aCell.textContent ? aCell.textContent.trim() : '';
+    const bText = bCell && bCell.textContent ? bCell.textContent.trim() : '';
         
         // Try to parse as numbers or dates first
         const aNum = parseFloat(aText);
@@ -1853,7 +2031,8 @@ function validateField(field) {
     
     if (isRequired && (!field.value || field.value.trim() === '')) {
         isValid = false;
-        errorMessage = `กรุณากรอก${field.previousElementSibling?.textContent || 'ข้อมูล'}`;
+    const prevLabel = field.previousElementSibling && field.previousElementSibling.textContent ? field.previousElementSibling.textContent : 'ข้อมูล';
+    errorMessage = `กรุณากรอก${prevLabel}`;
     }
     
     // Date validation
@@ -1967,7 +2146,12 @@ function initializeApp() {
     
     // Form event listeners (single enhanced listener with validation)
     setupFormEnhanced();
-    document.getElementById('settingsForm').addEventListener('submit', handleSettingsSubmit);
+    const settingsForm = document.getElementById('settingsForm');
+    if (settingsForm) {
+        settingsForm.addEventListener('submit', handleSettingsSubmit);
+    } else {
+        console.warn('settingsForm not found');
+    }
     
     // Drug form event listener
     const drugForm = document.getElementById('drugForm');
@@ -1976,21 +2160,30 @@ function initializeApp() {
     }
     
     // Filter change listeners
-    document.getElementById('filterUser').addEventListener('change', function() {
-        // Re-load data when user filter changes
-        loadData();
-        updateDashboardUserInfo();
-    });
-    
-    document.getElementById('filterPeriod').addEventListener('change', function() {
-        // Re-load data when period filter changes
-        loadData();
-        updateDashboardUserInfo();
-    });
+    const filterUserEl = document.getElementById('filterUser');
+    if (filterUserEl) {
+        filterUserEl.addEventListener('change', function() {
+            loadData();
+            updateDashboardUserInfo();
+        });
+    }
+
+    const filterPeriodEl = document.getElementById('filterPeriod');
+    if (filterPeriodEl) {
+        filterPeriodEl.addEventListener('change', function() {
+            loadData();
+            updateDashboardUserInfo();
+        });
+    }
     
     // Auto-save settings when user types
     ['apiKey', 'spreadsheetId', 'sheetName', 'userSheetName', 'drugSheetName', 'webAppUrl'].forEach(id => {
-        document.getElementById(id).addEventListener('input', function() {
+        const el = document.getElementById(id);
+        if (!el) {
+            console.warn('Config input not found:', id);
+            return;
+        }
+        el.addEventListener('input', function() {
             if (id === 'apiKey') {
                 googleSheetsConfig.apiKey = this.value;
             } else if (id === 'spreadsheetId') {
