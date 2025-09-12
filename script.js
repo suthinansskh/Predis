@@ -1191,8 +1191,14 @@ let analyticsFilters = {
     errorType: 'all', // 'all' | 'ผู้ป่วยนอก' | 'ผู้ป่วยใน'
     periodMode: 'all', // 'all' | 'year' | 'month'
     year: null,
-    month: null
+    month: null,
+    process: 'all' // เพิ่มตัวแปรสำหรับกรองกระบวนการ
 };
+
+// ===== Process Filter State =====
+let processFilter = 'all'; // Variable to store selected process filter
+let errorProcessFilter = 'all'; // Variable to store selected process filter for error details
+let drugProcessFilter = 'all'; // Variable to store selected process filter for drug statistics
 
 function applyAnalyticsFiltersToData(baseData) {
     if (!Array.isArray(baseData)) return [];
@@ -1227,6 +1233,11 @@ function refreshAdvancedAnalytics() {
     const filteredForAnalytics = applyAnalyticsFiltersToData(lastUserFilteredData);
     generateAdvancedAnalytics(filteredForAnalytics);
     updateAnalyticsFilterSummary();
+    
+    // Also refresh all charts with process filters
+    generateCauseChartByProcess();
+    generateErrorChartByProcess();
+    generateDrugChartByProcess();
 }
 
 function updateAnalyticsFilterSummary() {
@@ -1234,6 +1245,7 @@ function updateAnalyticsFilterSummary() {
     if (!el) return;
     let parts = [];
     parts.push(analyticsFilters.errorType === 'all' ? 'ทุกประเภทผู้ป่วย' : analyticsFilters.errorType);
+    parts.push(analyticsFilters.process === 'all' ? 'ทุกกระบวนการ' : analyticsFilters.process);
     if (analyticsFilters.periodMode === 'all') {
         parts.push('ทุกช่วงเวลา');
     } else if (analyticsFilters.periodMode === 'year') {
@@ -1246,6 +1258,7 @@ function updateAnalyticsFilterSummary() {
 
 function initAnalyticsFilterUI() {
     const etSel = document.getElementById('analyticsErrorType');
+    const processSel = document.getElementById('analyticsProcessFilter');
     const modeSel = document.getElementById('analyticsPeriodMode');
     const yearSel = document.getElementById('analyticsYear');
     const monthSel = document.getElementById('analyticsMonth');
@@ -1282,13 +1295,37 @@ function initAnalyticsFilterUI() {
         });
     }
     if (etSel) etSel.addEventListener('change', ()=>{ analyticsFilters.errorType = etSel.value; });
+    if (processSel) processSel.addEventListener('change', ()=>{ 
+        analyticsFilters.process = processSel.value; 
+        processFilter = processSel.value;  // Sync with global processFilter
+        errorProcessFilter = processSel.value;  // Sync with error process filter
+        drugProcessFilter = processSel.value;  // Sync with drug process filter
+        // Update dropdowns in all cards as well
+        const causeProcessFilter = document.getElementById('processFilter');
+        const errorProcessFilterEl = document.getElementById('errorProcessFilter');
+        const drugProcessFilterEl = document.getElementById('drugProcessFilter');
+        if (causeProcessFilter) causeProcessFilter.value = processSel.value;
+        if (errorProcessFilterEl) errorProcessFilterEl.value = processSel.value;
+        if (drugProcessFilterEl) drugProcessFilterEl.value = processSel.value;
+    });
     if (yearSel) yearSel.addEventListener('change', ()=>{ analyticsFilters.year = yearSel.value; });
     if (monthSel) monthSel.addEventListener('change', ()=>{ analyticsFilters.month = monthSel.value; });
     if (applyBtn) applyBtn.addEventListener('click', refreshAdvancedAnalytics);
     if (resetBtn) resetBtn.addEventListener('click', ()=>{
-        analyticsFilters = { errorType:'all', periodMode:'all', year:null, month:null };
+        analyticsFilters = { errorType:'all', periodMode:'all', year:null, month:null, process:'all' };
+        processFilter = 'all'; // Reset global processFilter
+        errorProcessFilter = 'all'; // Reset error process filter
+        drugProcessFilter = 'all'; // Reset drug process filter
         if (etSel) etSel.value='all';
+        if (processSel) processSel.value='all';
         if (modeSel) modeSel.value='all';
+        // Also reset the dropdowns in all cards
+        const causeProcessFilter = document.getElementById('processFilter');
+        const errorProcessFilterEl = document.getElementById('errorProcessFilter');
+        const drugProcessFilterEl = document.getElementById('drugProcessFilter');
+        if (causeProcessFilter) causeProcessFilter.value = 'all';
+        if (errorProcessFilterEl) errorProcessFilterEl.value = 'all';
+        if (drugProcessFilterEl) drugProcessFilterEl.value = 'all';
         yearWrap.style.display='none';
         monthWrap.style.display='none';
         refreshAdvancedAnalytics();
@@ -2885,7 +2922,9 @@ function generateAdvancedAnalytics(data) {
     
     // Generate charts
     generateProcessChart();
-    generateCauseChart();
+    generateErrorChartByProcess();
+    generateCauseChartByProcess();
+    generateDrugChartByProcess();
     updateLocationRanking();
     updateTimeDistribution();
     generateMonthlyTrendChart();
@@ -2979,68 +3018,72 @@ function generateProcessChart() {
     document.getElementById('topProcess').textContent = topProcess || '-';
     document.getElementById('topProcessCount').textContent = topProcessCount;
 
-    // Draw pie chart
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const radius = Math.min(centerX, centerY) - 60;
+    // Sort processes by count (descending)
+    const sortedData = processes.map((process, index) => ({
+        process,
+        count: counts[index]
+    })).sort((a, b) => b.count - a.count);
+    
+    const maxCount = Math.max(...counts);
+    const barHeight = 35; // Fixed height for each horizontal bar
+    const maxBarWidth = canvas.width - 180; // Space for labels
+    const startY = 50; // Top margin
+    const barSpacing = 45; // Space between bars
     
     const colors = [
         '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
-        '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+        '#9966FF', '#FF9F40', '#E91E63', '#795548'
     ];
     
-    let currentAngle = 0;
-    
-    processes.forEach((process, index) => {
-        const sliceAngle = (counts[index] / total) * 2 * Math.PI;
-        const color = colors[index % colors.length];
+    sortedData.forEach((item, index) => {
+        const barWidth = (item.count / maxCount) * (canvas.width - 40);
+        const x = 20; // Left margin
+        const y = startY + (index * barSpacing); // Horizontal layout
         
-        // Draw slice
+        // Draw background bar (full width)
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(x, y, canvas.width - 40, barHeight);
+        
+        // Draw actual data bar
+        const color = colors[index % colors.length];
         ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillRect(x, y, barWidth, barHeight);
         
-        // Draw percentage label
-        if (sliceAngle > 0.1) { // Only show label if slice is large enough
-            const labelAngle = currentAngle + sliceAngle / 2;
-            const labelX = centerX + Math.cos(labelAngle) * (radius * 0.7);
-            const labelY = centerY + Math.sin(labelAngle) * (radius * 0.7);
-            
-            const percentage = ((counts[index] / total) * 100).toFixed(1);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2;
-            ctx.strokeText(`${percentage}%`, labelX, labelY);
-            ctx.fillText(`${percentage}%`, labelX, labelY);
+        // Draw process name (left side)
+        ctx.fillStyle = '#2d3748';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        const maxLabelWidth = 180;
+        let displayText = item.process;
+        
+        // Truncate long text with ellipsis
+        if (ctx.measureText(displayText).width > maxLabelWidth) {
+            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
+                displayText = displayText.slice(0, -1);
+            }
+            displayText += '...';
         }
         
-        currentAngle += sliceAngle;
+        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
+        
+        // Draw count and percentage (right side)
+        const percentage = ((item.count / total) * 100).toFixed(1);
+        ctx.fillStyle = '#2d3748';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
+        
+        // Draw percentage below count
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#666';
+        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
     });
     
-    // Draw legend
-    const legendStartY = 20;
-    processes.forEach((process, index) => {
-        const y = legendStartY + (index * 25);
-        const color = colors[index % colors.length];
-        const percentage = ((counts[index] / total) * 100).toFixed(1);
-        
-        if (y < canvas.height - 30) { // Only draw if within canvas
-            ctx.fillStyle = color;
-            ctx.fillRect(10, y - 10, 15, 15);
-            
-            ctx.fillStyle = '#333';
-            ctx.font = '11px Arial';
-            ctx.textAlign = 'left';
-            const text = `${process.substring(0, 15)}${process.length > 15 ? '...' : ''} (${percentage}%)`;
-            ctx.fillText(text, 30, y);
-        }
-    });
+    // Draw title
+    ctx.fillStyle = '#2d3748';
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('การกระจายตามกระบวนการ', canvas.width / 2, 25);
 }
 
 // Generate cause distribution bar chart
@@ -3111,6 +3154,544 @@ function generateCauseChart() {
     ctx.lineTo(50, canvas.height - 50);
     ctx.lineTo(canvas.width - 50, canvas.height - 50);
     ctx.stroke();
+}
+
+// Filter cause chart by selected process
+function filterCauseByProcess() {
+    const processSelect = document.getElementById('processFilter');
+    if (!processSelect) return;
+    
+    processFilter = processSelect.value;
+    analyticsFilters.process = processSelect.value; // Sync with analytics filters
+    errorProcessFilter = processSelect.value; // Sync with error process filter
+    drugProcessFilter = processSelect.value; // Sync with drug process filter
+    
+    // Update other dropdowns
+    const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
+    const errorProcessFilterEl = document.getElementById('errorProcessFilter');
+    const drugProcessFilterEl = document.getElementById('drugProcessFilter');
+    if (analyticsProcessSelect) analyticsProcessSelect.value = processFilter;
+    if (errorProcessFilterEl) errorProcessFilterEl.value = processFilter;
+    if (drugProcessFilterEl) drugProcessFilterEl.value = processFilter;
+    
+    // Update UI to show selected process
+    const selectedProcessEl = document.getElementById('selectedProcess');
+    const selectedErrorProcessEl = document.getElementById('selectedErrorProcess');
+    const selectedDrugProcessEl = document.getElementById('selectedDrugProcess');
+    if (selectedProcessEl) {
+        selectedProcessEl.textContent = processFilter === 'all' ? 'ทุกกระบวนการ' : processFilter;
+    }
+    if (selectedErrorProcessEl) {
+        selectedErrorProcessEl.textContent = processFilter === 'all' ? 'ทุกกระบวนการ' : processFilter;
+    }
+    if (selectedDrugProcessEl) {
+        selectedDrugProcessEl.textContent = processFilter === 'all' ? 'ทุกกระบวนการ' : processFilter;
+    }
+    
+    // Update analytics filter summary
+    updateAnalyticsFilterSummary();
+    
+    // Regenerate all charts with process filter
+    generateCauseChartByProcess();
+    generateErrorChartByProcess();
+    generateDrugChartByProcess();
+}
+
+// Generate cause chart filtered by process and show top 5
+function generateCauseChartByProcess() {
+    const canvas = document.getElementById('causeChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Get filtered data based on selected process and analytics filters
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
+    
+    // Additional filter by process if not 'all'
+    if (processFilter !== 'all') {
+        filteredData = filteredData.filter(row => {
+            const processValue = (row[5] || '').toString().trim(); // Process is column 5
+            return processValue === processFilter;
+        });
+    }
+    
+    // Count causes from filtered data
+    const causeData = {};
+    filteredData.forEach(row => {
+        const cause = (row[9] || '').toString().trim(); // Cause is column 9
+        if (cause) {
+            causeData[cause] = (causeData[cause] || 0) + 1;
+        }
+    });
+    
+    const causes = Object.keys(causeData);
+    const counts = Object.values(causeData);
+    
+    if (causes.length === 0) {
+        drawNoDataMessage(ctx, canvas, processFilter === 'all' ? 'ไม่มีข้อมูลสาเหตุ' : `ไม่มีข้อมูลสาเหตุสำหรับ ${processFilter}`);
+        // Update summary info
+        const topCauseEl = document.getElementById('topCause');
+        const causeItemCountEl = document.getElementById('causeItemCount');
+        if (topCauseEl) topCauseEl.textContent = '-';
+        if (causeItemCountEl) causeItemCountEl.textContent = '0';
+        return;
+    }
+
+    // Sort and get top 5 causes (changed from 8 to 5)
+    const sortedData = causes.map((cause) => ({
+        cause,
+        count: causeData[cause]
+    })).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    // Update summary info
+    const topCause = sortedData[0]?.cause || '-';
+    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
+    const topCauseEl = document.getElementById('topCause');
+    const causeItemCountEl = document.getElementById('causeItemCount');
+    
+    if (topCauseEl) topCauseEl.textContent = topCause;
+    if (causeItemCountEl) causeItemCountEl.textContent = totalItems;
+
+    const maxCount = Math.max(...sortedData.map(item => item.count));
+    const barHeight = 38; // Fixed height for each horizontal bar
+    const startY = 65; // Top margin
+    const barSpacing = 58; // Space between bars
+    
+    // Calculate total for percentage
+    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
+    
+    sortedData.forEach((item, index) => {
+        const barWidth = (item.count / maxCount) * (canvas.width - 40);
+        const x = 20; // Left margin
+        const y = startY + (index * barSpacing); // Horizontal layout
+        
+        // Draw background bar (full width)
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(x, y, canvas.width - 40, barHeight);
+        
+        // Choose color based on ranking
+        let color;
+        if (index === 0) {
+            color = '#FF6B6B'; // Red for #1
+        } else if (index === 1) {
+            color = '#FF9F43'; // Orange for #2
+        } else if (index === 2) {
+            color = '#26D0CE'; // Cyan for #3
+        } else {
+            color = '#74C0FC'; // Blue for others
+        }
+        
+        // Draw actual data bar
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        // Draw cause name (left side)
+        ctx.fillStyle = '#2d3748';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        const maxLabelWidth = 250;
+        let displayText = item.cause;
+        
+        // Truncate long text with ellipsis
+        if (ctx.measureText(displayText).width > maxLabelWidth) {
+            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
+                displayText = displayText.slice(0, -1);
+            }
+            displayText += '...';
+        }
+        
+        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
+        
+        // Draw count and percentage (right side)
+        const percentage = ((item.count / totalCount) * 100).toFixed(1);
+        ctx.fillStyle = '#2d3748';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
+        
+        // Draw percentage below count
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#666';
+        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
+    });
+    
+    // Draw axes
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(45, 50);
+    ctx.lineTo(45, canvas.height - 70);
+    ctx.lineTo(canvas.width - 45, canvas.height - 70);
+    ctx.stroke();
+    
+    // Draw title
+    ctx.fillStyle = '#2d3748';
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center';
+    const title = processFilter === 'all' ? 
+        'Top 5 สาเหตุของข้อผิดพลาด (ทุกกระบวนการ)' : 
+        `Top 5 สาเหตุของข้อผิดพลาด (${processFilter})`;
+    ctx.fillText(title, canvas.width / 2, 25);
+}
+
+// Filter error chart by selected process
+function filterErrorByProcess() {
+    const errorProcessSelect = document.getElementById('errorProcessFilter');
+    if (!errorProcessSelect) return;
+    
+    errorProcessFilter = errorProcessSelect.value;
+    analyticsFilters.process = errorProcessSelect.value; // Sync with analytics filters
+    processFilter = errorProcessSelect.value; // Sync with cause process filter
+    drugProcessFilter = errorProcessSelect.value; // Sync with drug process filter
+    
+    // Update other dropdowns
+    const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
+    const causeProcessFilter = document.getElementById('processFilter');
+    const drugProcessFilterEl = document.getElementById('drugProcessFilter');
+    if (analyticsProcessSelect) analyticsProcessSelect.value = errorProcessFilter;
+    if (causeProcessFilter) causeProcessFilter.value = errorProcessFilter;
+    if (drugProcessFilterEl) drugProcessFilterEl.value = errorProcessFilter;
+    
+    // Update UI to show selected process
+    const selectedErrorProcessEl = document.getElementById('selectedErrorProcess');
+    const selectedProcessEl = document.getElementById('selectedProcess');
+    const selectedDrugProcessEl = document.getElementById('selectedDrugProcess');
+    if (selectedErrorProcessEl) {
+        selectedErrorProcessEl.textContent = errorProcessFilter === 'all' ? 'ทุกกระบวนการ' : errorProcessFilter;
+    }
+    if (selectedProcessEl) {
+        selectedProcessEl.textContent = errorProcessFilter === 'all' ? 'ทุกกระบวนการ' : errorProcessFilter;
+    }
+    if (selectedDrugProcessEl) {
+        selectedDrugProcessEl.textContent = errorProcessFilter === 'all' ? 'ทุกกระบวนการ' : errorProcessFilter;
+    }
+    
+    // Update analytics filter summary
+    updateAnalyticsFilterSummary();
+    
+    // Regenerate all charts with process filter
+    generateErrorChartByProcess();
+    generateCauseChartByProcess();
+    generateDrugChartByProcess();
+}
+
+// Generate error chart filtered by process and show top 5
+function generateErrorChartByProcess() {
+    const canvas = document.getElementById('errorChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Get filtered data based on selected process and analytics filters
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
+    
+    // Additional filter by process if not 'all'
+    if (errorProcessFilter !== 'all') {
+        filteredData = filteredData.filter(row => {
+            const processValue = (row[5] || '').toString().trim(); // Process is column 5
+            return processValue === errorProcessFilter;
+        });
+    }
+    
+    // Count errors from filtered data
+    const errorData = {};
+    filteredData.forEach(row => {
+        const error = (row[6] || '').toString().trim(); // Error detail is column 6
+        if (error) {
+            errorData[error] = (errorData[error] || 0) + 1;
+        }
+    });
+    
+    const errors = Object.keys(errorData);
+    const counts = Object.values(errorData);
+    
+    if (errors.length === 0) {
+        drawNoDataMessage(ctx, canvas, errorProcessFilter === 'all' ? 'ไม่มีข้อมูลข้อผิดพลาด' : `ไม่มีข้อมูลข้อผิดพลาดสำหรับ ${errorProcessFilter}`);
+        // Update summary info
+        const topErrorEl = document.getElementById('topError');
+        const errorItemCountEl = document.getElementById('errorItemCount');
+        if (topErrorEl) topErrorEl.textContent = '-';
+        if (errorItemCountEl) errorItemCountEl.textContent = '0';
+        return;
+    }
+
+    // Sort and get top 5 errors
+    const sortedData = errors.map((error) => ({
+        error,
+        count: errorData[error]
+    })).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    // Update summary info
+    const topError = sortedData[0]?.error || '-';
+    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
+    const topErrorEl = document.getElementById('topError');
+    const errorItemCountEl = document.getElementById('errorItemCount');
+    
+    if (topErrorEl) topErrorEl.textContent = topError;
+    if (errorItemCountEl) errorItemCountEl.textContent = totalItems;
+
+    const maxCount = Math.max(...sortedData.map(item => item.count));
+    const barHeight = 38; // Fixed height for each horizontal bar
+    const maxBarWidth = canvas.width - 260; // Space for labels
+    const startY = 65; // Top margin
+    const barSpacing = 58; // Space between bars
+    
+    // Calculate total for percentage
+    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
+    
+    sortedData.forEach((item, index) => {
+        const barWidth = (item.count / maxCount) * (canvas.width - 40);
+        const x = 20; // Left margin
+        const y = startY + (index * barSpacing); // Horizontal layout
+        
+        // Draw background bar (full width)
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(x, y, canvas.width - 40, barHeight);
+        
+        // Choose color based on ranking
+        let color;
+        if (index === 0) {
+            color = '#FF9800'; // Orange for #1
+        } else if (index === 1) {
+            color = '#2196F3'; // Blue for #2
+        } else if (index === 2) {
+            color = '#4CAF50'; // Green for #3
+        } else {
+            color = '#9C27B0'; // Purple for others
+        }
+        
+        // Draw actual data bar
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        // Draw error name (left side)
+        ctx.fillStyle = '#2d3748';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        const maxLabelWidth = 250;
+        let displayText = item.error;
+        
+        // Truncate long text with ellipsis
+        if (ctx.measureText(displayText).width > maxLabelWidth) {
+            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
+                displayText = displayText.slice(0, -1);
+            }
+            displayText += '...';
+        }
+        
+        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
+        
+        // Draw count and percentage (right side)
+        const percentage = ((item.count / totalCount) * 100).toFixed(1);
+        ctx.fillStyle = '#2d3748';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
+        
+        // Draw percentage below count
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#666';
+        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
+    });
+    
+    // Draw axes
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(45, 50);
+    ctx.lineTo(45, canvas.height - 70);
+    ctx.lineTo(canvas.width - 45, canvas.height - 70);
+    ctx.stroke();
+    
+    // Draw title
+    ctx.fillStyle = '#2d3748';
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center';
+    const title = errorProcessFilter === 'all' ? 
+        'Top 5 ข้อผิดพลาด (ทุกกระบวนการ)' : 
+        `Top 5 ข้อผิดพลาด (${errorProcessFilter})`;
+    ctx.fillText(title, canvas.width / 2, 25);
+}
+
+// Filter drug chart by selected process
+function filterDrugByProcess() {
+    const drugProcessSelect = document.getElementById('drugProcessFilter');
+    if (!drugProcessSelect) return;
+    
+    drugProcessFilter = drugProcessSelect.value;
+    analyticsFilters.process = drugProcessSelect.value; // Sync with analytics filters
+    processFilter = drugProcessSelect.value; // Sync with cause process filter
+    errorProcessFilter = drugProcessSelect.value; // Sync with error process filter
+    
+    // Update other dropdowns
+    const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
+    const causeProcessFilter = document.getElementById('processFilter');
+    const errorProcessFilterEl = document.getElementById('errorProcessFilter');
+    if (analyticsProcessSelect) analyticsProcessSelect.value = drugProcessFilter;
+    if (causeProcessFilter) causeProcessFilter.value = drugProcessFilter;
+    if (errorProcessFilterEl) errorProcessFilterEl.value = drugProcessFilter;
+    
+    // Update UI to show selected process
+    const selectedDrugProcessEl = document.getElementById('selectedDrugProcess');
+    const selectedProcessEl = document.getElementById('selectedProcess');
+    const selectedErrorProcessEl = document.getElementById('selectedErrorProcess');
+    if (selectedDrugProcessEl) {
+        selectedDrugProcessEl.textContent = drugProcessFilter === 'all' ? 'ทุกกระบวนการ' : drugProcessFilter;
+    }
+    if (selectedProcessEl) {
+        selectedProcessEl.textContent = drugProcessFilter === 'all' ? 'ทุกกระบวนการ' : drugProcessFilter;
+    }
+    if (selectedErrorProcessEl) {
+        selectedErrorProcessEl.textContent = drugProcessFilter === 'all' ? 'ทุกกระบวนการ' : drugProcessFilter;
+    }
+    
+    // Update analytics filter summary
+    updateAnalyticsFilterSummary();
+    
+    // Regenerate all charts with process filter
+    generateDrugChartByProcess();
+    generateCauseChartByProcess();
+    generateErrorChartByProcess();
+}
+
+// Generate drug chart filtered by process and show top 5 correct items
+function generateDrugChartByProcess() {
+    const canvas = document.getElementById('drugChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Get filtered data based on selected process and analytics filters
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
+    
+    // Additional filter by process if not 'all'
+    if (drugProcessFilter !== 'all') {
+        filteredData = filteredData.filter(row => {
+            const processValue = (row[5] || '').toString().trim(); // Process is column 5
+            return processValue === drugProcessFilter;
+        });
+    }
+    
+    // Count correct drugs from filtered data
+    const drugData = {};
+    filteredData.forEach(row => {
+        const correctDrug = (row[7] || '').toString().trim(); // Correct item is column 7
+        if (correctDrug) {
+            drugData[correctDrug] = (drugData[correctDrug] || 0) + 1;
+        }
+    });
+    
+    const drugs = Object.keys(drugData);
+    const counts = Object.values(drugData);
+    
+    if (drugs.length === 0) {
+        drawNoDataMessage(ctx, canvas, drugProcessFilter === 'all' ? 'ไม่มีข้อมูลรายการยา' : `ไม่มีข้อมูลรายการยาสำหรับ ${drugProcessFilter}`);
+        // Update summary info
+        const topDrugEl = document.getElementById('topDrug');
+        const drugItemCountEl = document.getElementById('drugItemCount');
+        if (topDrugEl) topDrugEl.textContent = '-';
+        if (drugItemCountEl) drugItemCountEl.textContent = '0';
+        return;
+    }
+
+    // Sort and get top 5 drugs
+    const sortedData = drugs.map((drug) => ({
+        drug,
+        count: drugData[drug]
+    })).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    // Update summary info
+    const topDrug = sortedData[0]?.drug || '-';
+    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
+    const topDrugEl = document.getElementById('topDrug');
+    const drugItemCountEl = document.getElementById('drugItemCount');
+    
+    if (topDrugEl) topDrugEl.textContent = topDrug;
+    if (drugItemCountEl) drugItemCountEl.textContent = totalItems;
+
+    const maxCount = Math.max(...sortedData.map(item => item.count));
+    const barHeight = 38; // Fixed height for each horizontal bar
+    const startY = 65; // Top margin
+    const barSpacing = 58; // Space between bars
+    
+    // Calculate total for percentage
+    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
+    
+    sortedData.forEach((item, index) => {
+        const barWidth = (item.count / maxCount) * (canvas.width - 40);
+        const x = 20; // Left margin
+        const y = startY + (index * barSpacing); // Horizontal layout
+        
+        // Draw background bar (full width)
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(x, y, canvas.width - 40, barHeight);
+        
+        // Choose color based on ranking
+        let color;
+        if (index === 0) {
+            color = '#9C27B0'; // Purple for #1
+        } else if (index === 1) {
+            color = '#673AB7'; // Deep Purple for #2
+        } else if (index === 2) {
+            color = '#3F51B5'; // Indigo for #3
+        } else {
+            color = '#2196F3'; // Blue for others
+        }
+        
+        // Draw actual data bar
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        // Draw drug name (left side)
+        ctx.fillStyle = '#2d3748';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        const maxLabelWidth = 250;
+        let displayText = item.drug;
+        
+        // Truncate long text with ellipsis
+        if (ctx.measureText(displayText).width > maxLabelWidth) {
+            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
+                displayText = displayText.slice(0, -1);
+            }
+            displayText += '...';
+        }
+        
+        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
+        
+        // Draw count and percentage (right side)
+        const percentage = ((item.count / totalCount) * 100).toFixed(1);
+        ctx.fillStyle = '#2d3748';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
+        
+        // Draw percentage below count
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#666';
+        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
+    });
+    
+    // Draw axes
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(45, 50);
+    ctx.lineTo(45, canvas.height - 70);
+    ctx.lineTo(canvas.width - 45, canvas.height - 70);
+    ctx.stroke();
+    
+    // Draw title
+    ctx.fillStyle = '#2d3748';
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center';
+    const title = drugProcessFilter === 'all' ? 
+        'Top 5 รายการยาที่ถูกต้อง (ทุกกระบวนการ)' : 
+        `Top 5 รายการยาที่ถูกต้อง (${drugProcessFilter})`;
+    ctx.fillText(title, canvas.width / 2, 25);
 }
 
 // Update location ranking

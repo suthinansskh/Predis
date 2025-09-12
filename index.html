@@ -384,6 +384,18 @@
                         </select>
                     </div>
                     <div style="display:flex; flex-direction:column; min-width:140px;">
+                        <label for="analyticsProcessFilter" style="font-size:12px; font-weight:600; color:#333;">กระบวนการ</label>
+                        <select id="analyticsProcessFilter" style="padding:6px 8px;">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="จัดยา">จัดยา</option>
+                            <option value="ลงข้อมูล">ลงข้อมูล</option>
+                            <option value="เตรียมยา">เตรียมยา</option>
+                            <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                            <option value="จัดเก็บ">จัดเก็บ</option>
+                            <option value="จัดส่ง">จัดส่ง</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; min-width:140px;">
                         <label for="analyticsPeriodMode" style="font-size:12px; font-weight:600; color:#333;">โหมดช่วงเวลา</label>
                         <select id="analyticsPeriodMode" style="padding:6px 8px;">
                             <option value="all">ทั้งหมด</option>
@@ -431,8 +443,122 @@
                     </div>
                     
                     <div class="analytics-grid">
+                        <!-- Error Details Analysis -->
+                        <div class="analytics-card error-card" style="--card-index: 0;">
+                            <div class="card-header">
+                                <h4><i class="fas fa-exclamation-triangle"></i> ข้อผิดพลาด</h4>
+                                <div class="card-actions">
+                                    <select id="errorProcessFilter" onchange="filterErrorByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('error')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="errorChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">ข้อผิดพลาดหลัก:</span>
+                                    <span class="value" id="topError">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedErrorProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="errorItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cause Analysis -->
+                        <div class="analytics-card cause-card" style="--card-index: 1;">
+                            <div class="card-header">
+                                <h4><i class="fas fa-search"></i> สาเหตุของข้อผิดพลาด</h4>
+                                <div class="card-actions">
+                                    <select id="processFilter" onchange="filterCauseByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('cause')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="causeChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">สาเหตุหลัก:</span>
+                                    <span class="value" id="topCause">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="causeItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Drug Statistics -->
+                        <div class="analytics-card drug-card" style="--card-index: 2;">
+                            <div class="card-header">
+                                <h4><i class="fas fa-pills"></i> รายการยาที่ถูกต้อง</h4>
+                                <div class="card-actions">
+                                    <select id="drugProcessFilter" onchange="filterDrugByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('drug')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="drugChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">ยาหลัก:</span>
+                                    <span class="value" id="topDrug">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedDrugProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="drugItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Process Analysis -->
-                        <div class="analytics-card">
+                        <div class="analytics-card process-card" style="--card-index: 3;">
                             <div class="card-header">
                                 <h4><i class="fas fa-cogs"></i> การกระจายตามกระบวนการ</h4>
                                 <div class="card-actions">
@@ -442,7 +568,7 @@
                                 </div>
                             </div>
                             <div class="chart-container">
-                                <canvas id="processChart" width="400" height="300"></canvas>
+                                <canvas id="processChart" width="420" height="320"></canvas>
                             </div>
                             <div class="chart-summary">
                                 <div class="summary-item">
@@ -456,34 +582,13 @@
                             </div>
                         </div>
 
-                        <!-- Cause Analysis -->
-                        <div class="analytics-card">
-                            <div class="card-header">
-                                <h4><i class="fas fa-search"></i> สาเหตุของข้อผิดพลาด</h4>
-                                <div class="card-actions">
-                                    <button onclick="refreshChart('cause')" class="btn-icon" title="รีเฟรชกราฟ">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="causeChart" width="400" height="300"></canvas>
-                            </div>
-                            <div class="chart-summary">
-                                <div class="summary-item">
-                                    <span class="label">สาเหตุหลัก:</span>
-                                    <span class="value" id="topCause">-</span>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Time Analysis -->
-                        <div class="analytics-card">
+                        <div class="analytics-card time-card" style="--card-index: 4;">
                             <div class="card-header">
                                 <h4><i class="fas fa-clock"></i> การกระจายตามช่วงเวลา</h4>
                             </div>
                             <div class="time-distribution">
-                                <div class="time-slot">
+                                <div class="time-slot" style="--slot-index: 0;">
                                     <div class="time-header">
                                         <span class="time-label">เวรเช้า (08:00-16:00)</span>
                                         <span class="time-count" id="morningCount">0</span>
@@ -493,7 +598,7 @@
                                     </div>
                                     <div class="time-percentage" id="morningPercent">0%</div>
                                 </div>
-                                <div class="time-slot">
+                                <div class="time-slot" style="--slot-index: 1;">
                                     <div class="time-header">
                                         <span class="time-label">เวรบ่าย (16:00-24:00)</span>
                                         <span class="time-count" id="afternoonCount">0</span>
@@ -503,7 +608,7 @@
                                     </div>
                                     <div class="time-percentage" id="afternoonPercent">0%</div>
                                 </div>
-                                <div class="time-slot">
+                                <div class="time-slot" style="--slot-index: 2;">
                                     <div class="time-header">
                                         <span class="time-label">เวรดึก (24:00-08:00)</span>
                                         <span class="time-count" id="nightCount">0</span>
@@ -517,7 +622,7 @@
                         </div>
 
                         <!-- Location Ranking -->
-                        <div class="analytics-card">
+                        <div class="analytics-card location-card" style="--card-index: 5;">
                             <div class="card-header">
                                 <h4><i class="fas fa-map-marker-alt"></i> สถานที่เกิดเหตุบ่อยที่สุด</h4>
                             </div>
@@ -533,7 +638,7 @@
                         </div>
 
                         <!-- Monthly Trend -->
-                        <div class="analytics-card full-width">
+                        <div class="analytics-card full-width trend-card" style="--card-index: 6;">
                             <div class="card-header">
                                 <h4><i class="fas fa-chart-line"></i> แนวโน้มรายเดือน (6 เดือนล่าสุด)</h4>
                                 <div class="card-actions">
