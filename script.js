@@ -3,6 +3,12 @@ let globalDrugList = [];
 let globalUsersData = [];
 let currentUser = null;
 
+// Chart.js instances (for charts 1-4)
+let processChartInstance = null;
+let errorChartInstance = null;
+let causeChartInstance = null;
+let drugChartInstance = null;
+
 let googleSheetsConfig = {
     apiKey: 'AIzaSyCF-pWr13N_s7Iu868nSa6cPiMxDduuJ1k',
     spreadsheetId: '1QDIxEXCVLiA7oijXN15N2ZH2LzPtHDecbqolYGs9Ldk',
@@ -781,6 +787,13 @@ function setupDrugSearchInputs() {
     incorrectItemInput.addEventListener('focus', function() {
         this.setAttribute('list', 'incorrectItemList');
     });
+
+    // Enhance inputs with searchable dropdowns (better UX than native datalist)
+    try {
+        setupSearchableDropdowns();
+    } catch (e) {
+        console.warn('Searchable dropdown init failed, falling back to datalist', e);
+    }
 }
 
 // Validate drug input against available options
@@ -810,6 +823,162 @@ function validateDrugInput(input) {
         input.style.backgroundColor = '#ffffff';
     }
 }
+
+// --- Searchable dropdown enhancement (replaces plain datalist UX) ---
+function setupSearchableDropdowns() {
+    const correctInput = document.getElementById('correctItem');
+    const incorrectInput = document.getElementById('incorrectItem');
+    if (!correctInput || !incorrectInput) return;
+
+    // Build options array from drugListData (active only)
+    const options = (drugListData || []).filter(d => d.status === 'Active').map(drug => {
+        return drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode;
+    });
+
+    // Initialize dropdown widgets
+    makeSearchable(correctInput, options);
+    makeSearchable(incorrectInput, options);
+}
+
+function makeSearchable(inputEl, options) {
+    // Avoid double-init
+    if (inputEl._searchableInit) return;
+    inputEl._searchableInit = true;
+
+    // Create container
+    const container = document.createElement('div');
+    container.className = 'searchable-dropdown-container';
+    container.style.position = 'relative';
+
+    // Wrap input
+    const parent = inputEl.parentNode;
+    parent.replaceChild(container, inputEl);
+    container.appendChild(inputEl);
+
+    // Create list box
+    const list = document.createElement('div');
+    list.className = 'searchable-dropdown-list';
+    list.style.position = 'absolute';
+    list.style.left = '0';
+    list.style.right = '0';
+    list.style.top = '100%';
+    list.style.zIndex = '999';
+    list.style.maxHeight = '220px';
+    list.style.overflow = 'auto';
+    list.style.background = '#fff';
+    list.style.border = '1px solid #ddd';
+    list.style.borderTop = 'none';
+    list.style.boxShadow = '0 4px 8px rgba(0,0,0,0.06)';
+    list.style.display = 'none';
+    list.style.padding = '6px 0';
+    list.style.borderRadius = '0 0 6px 6px';
+
+    container.appendChild(list);
+
+    let filtered = [];
+    let activeIndex = -1;
+
+    function renderList() {
+        list.innerHTML = '';
+        if (!filtered.length) {
+            const item = document.createElement('div');
+            item.className = 'searchable-item empty';
+            item.textContent = 'ไม่พบรายการ';
+            item.style.padding = '8px 12px';
+            item.style.color = '#666';
+            list.appendChild(item);
+            return;
+        }
+
+        filtered.forEach((label, i) => {
+            const item = document.createElement('div');
+            item.className = 'searchable-item';
+            item.textContent = label;
+            item.style.padding = '8px 12px';
+            item.style.cursor = 'pointer';
+            item.style.whiteSpace = 'nowrap';
+            item.style.overflow = 'hidden';
+            item.style.textOverflow = 'ellipsis';
+            if (i === activeIndex) {
+                item.style.background = '#f0f6ff';
+            }
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault(); // prevent blur
+                selectIndex(i);
+                hideList();
+                inputEl.focus();
+            });
+            list.appendChild(item);
+        });
+    }
+
+    function showList() {
+        list.style.display = 'block';
+    }
+    function hideList() {
+        list.style.display = 'none';
+        activeIndex = -1;
+    }
+
+    function selectIndex(i) {
+        if (i < 0 || i >= filtered.length) return;
+        inputEl.value = filtered[i];
+        validateDrugInput(inputEl);
+    }
+
+    function updateFilter(value) {
+        const q = (value || '').toLowerCase().trim();
+        if (!q) {
+            // show top 30 options when empty
+            filtered = options.slice(0, 30);
+        } else {
+            filtered = options.filter(o => o.toLowerCase().includes(q)).slice(0, 30);
+        }
+        activeIndex = -1;
+        renderList();
+        showList();
+    }
+
+    inputEl.addEventListener('input', function() {
+        updateFilter(this.value);
+        validateDrugInput(this);
+    });
+
+    inputEl.addEventListener('focus', function() {
+        updateFilter(this.value);
+    });
+
+    inputEl.addEventListener('blur', function() {
+        // small timeout to allow mousedown selection
+        setTimeout(() => hideList(), 150);
+    });
+
+    inputEl.addEventListener('keydown', function(e) {
+        if (list.style.display === 'none') return;
+        const key = e.key;
+        if (key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
+            renderList();
+        } else if (key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            renderList();
+        } else if (key === 'Enter') {
+            e.preventDefault();
+            if (activeIndex >= 0) {
+                selectIndex(activeIndex);
+            }
+            hideList();
+        } else if (key === 'Escape') {
+            hideList();
+        }
+    });
+
+    // initial
+    updateFilter(inputEl.value);
+}
+
 
 // Form submission handler
 async function handleFormSubmit(event) {
@@ -2996,94 +3165,64 @@ function processAnalyticsData(data) {
 
 // Generate process distribution pie chart
 function generateProcessChart() {
+    // Use Chart.js to render a horizontal bar chart for process distribution
     const canvas = document.getElementById('processChart');
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    const processes = Object.keys(analyticsData.processData);
-    const counts = Object.values(analyticsData.processData);
-    const total = counts.reduce((sum, count) => sum + count, 0);
-    
-    if (total === 0) {
-        drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลกระบวนการ');
-        return;
-    }
+
+    const dataObj = analyticsData.processData || {};
+    const labels = Object.keys(dataObj).sort((a,b)=> dataObj[b]-dataObj[a]);
+    const data = labels.map(l => dataObj[l]);
 
     // Update summary
-    const topProcess = processes[counts.indexOf(Math.max(...counts))];
-    const topProcessCount = Math.max(...counts);
-    
-    document.getElementById('topProcess').textContent = topProcess || '-';
-    document.getElementById('topProcessCount').textContent = topProcessCount;
+    if (labels.length > 0) {
+        const topProcess = labels[0];
+        const topProcessCount = data[0];
+        document.getElementById('topProcess').textContent = topProcess || '-';
+        document.getElementById('topProcessCount').textContent = topProcessCount || '0';
+    } else {
+        document.getElementById('topProcess').textContent = '-';
+        document.getElementById('topProcessCount').textContent = '0';
+    }
 
-    // Sort processes by count (descending)
-    const sortedData = processes.map((process, index) => ({
-        process,
-        count: counts[index]
-    })).sort((a, b) => b.count - a.count);
-    
-    const maxCount = Math.max(...counts);
-    const barHeight = 35; // Fixed height for each horizontal bar
-    const maxBarWidth = canvas.width - 180; // Space for labels
-    const startY = 50; // Top margin
-    const barSpacing = 45; // Space between bars
-    
-    const colors = [
-        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
-        '#9966FF', '#FF9F40', '#E91E63', '#795548'
-    ];
-    
-    sortedData.forEach((item, index) => {
-        const barWidth = (item.count / maxCount) * (canvas.width - 40);
-        const x = 20; // Left margin
-        const y = startY + (index * barSpacing); // Horizontal layout
-        
-        // Draw background bar (full width)
-        ctx.fillStyle = '#f5f5f5';
-        ctx.fillRect(x, y, canvas.width - 40, barHeight);
-        
-        // Draw actual data bar
-        const color = colors[index % colors.length];
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, barWidth, barHeight);
-        
-        // Draw process name (left side)
-        ctx.fillStyle = '#2d3748';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        const maxLabelWidth = 180;
-        let displayText = item.process;
-        
-        // Truncate long text with ellipsis
-        if (ctx.measureText(displayText).width > maxLabelWidth) {
-            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
-                displayText = displayText.slice(0, -1);
+    // Destroy previous instance
+    if (processChartInstance) {
+        try { processChartInstance.destroy(); } catch (e) { /* ignore */ }
+        processChartInstance = null;
+    }
+
+    // Colors
+    const palette = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#E91E63','#795548'];
+    const backgroundColors = labels.map((_,i) => palette[i % palette.length]);
+
+    processChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'จำนวน',
+                data: data,
+                backgroundColor: backgroundColors,
+                borderRadius: 8,
+                barThickness: 18
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.formattedValue} รายการ`
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { precision:0 } },
+                y: { ticks: { autoSkip: false } }
             }
-            displayText += '...';
         }
-        
-        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
-        
-        // Draw count and percentage (right side)
-        const percentage = ((item.count / total) * 100).toFixed(1);
-        ctx.fillStyle = '#2d3748';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
-        
-        // Draw percentage below count
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#666';
-        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
     });
-    
-    // Draw title
-    ctx.fillStyle = '#2d3748';
-    ctx.font = 'bold 15px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('การกระจายตามกระบวนการ', canvas.width / 2, 25);
 }
 
 // Generate cause distribution bar chart
@@ -3199,140 +3338,54 @@ function filterCauseByProcess() {
 
 // Generate cause chart filtered by process and show top 5
 function generateCauseChartByProcess() {
+    // Render top 5 causes using Chart.js
     const canvas = document.getElementById('causeChart');
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Get filtered data based on selected process and analytics filters
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
-    
-    // Additional filter by process if not 'all'
+
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (processFilter !== 'all') {
-        filteredData = filteredData.filter(row => {
-            const processValue = (row[5] || '').toString().trim(); // Process is column 5
-            return processValue === processFilter;
-        });
+        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === processFilter);
     }
-    
-    // Count causes from filtered data
-    const causeData = {};
+
+    const causeCounts = {};
     filteredData.forEach(row => {
-        const cause = (row[9] || '').toString().trim(); // Cause is column 9
-        if (cause) {
-            causeData[cause] = (causeData[cause] || 0) + 1;
-        }
+        const cause = (row[9] || '').toString().trim();
+        if (cause) causeCounts[cause] = (causeCounts[cause] || 0) + 1;
     });
-    
-    const causes = Object.keys(causeData);
-    const counts = Object.values(causeData);
-    
-    if (causes.length === 0) {
-        drawNoDataMessage(ctx, canvas, processFilter === 'all' ? 'ไม่มีข้อมูลสาเหตุ' : `ไม่มีข้อมูลสาเหตุสำหรับ ${processFilter}`);
-        // Update summary info
-        const topCauseEl = document.getElementById('topCause');
-        const causeItemCountEl = document.getElementById('causeItemCount');
-        if (topCauseEl) topCauseEl.textContent = '-';
-        if (causeItemCountEl) causeItemCountEl.textContent = '0';
-        return;
-    }
 
-    // Sort and get top 5 causes (changed from 8 to 5)
-    const sortedData = causes.map((cause) => ({
-        cause,
-        count: causeData[cause]
-    })).sort((a, b) => b.count - a.count).slice(0, 5);
+    const sorted = Object.entries(causeCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
+    const labels = sorted.map(s=>s[0]);
+    const data = sorted.map(s=>s[1]);
 
-    // Update summary info
-    const topCause = sortedData[0]?.cause || '-';
-    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
     const topCauseEl = document.getElementById('topCause');
     const causeItemCountEl = document.getElementById('causeItemCount');
-    
-    if (topCauseEl) topCauseEl.textContent = topCause;
-    if (causeItemCountEl) causeItemCountEl.textContent = totalItems;
+    if (topCauseEl) topCauseEl.textContent = labels[0] || '-';
+    if (causeItemCountEl) causeItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
 
-    const maxCount = Math.max(...sortedData.map(item => item.count));
-    const barHeight = 38; // Fixed height for each horizontal bar
-    const startY = 65; // Top margin
-    const barSpacing = 58; // Space between bars
-    
-    // Calculate total for percentage
-    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
-    
-    sortedData.forEach((item, index) => {
-        const barWidth = (item.count / maxCount) * (canvas.width - 40);
-        const x = 20; // Left margin
-        const y = startY + (index * barSpacing); // Horizontal layout
-        
-        // Draw background bar (full width)
-        ctx.fillStyle = '#f5f5f5';
-        ctx.fillRect(x, y, canvas.width - 40, barHeight);
-        
-        // Choose color based on ranking
-        let color;
-        if (index === 0) {
-            color = '#FF6B6B'; // Red for #1
-        } else if (index === 1) {
-            color = '#FF9F43'; // Orange for #2
-        } else if (index === 2) {
-            color = '#26D0CE'; // Cyan for #3
-        } else {
-            color = '#74C0FC'; // Blue for others
+    if (causeChartInstance) { try { causeChartInstance.destroy(); } catch(e){} causeChartInstance = null; }
+
+    const palette = ['#FF6B6B','#FF9F43','#26D0CE','#74C0FC','#9C27B0'];
+
+    causeChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: palette.slice(0, labels.length), borderRadius: 8 }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) { return context.formattedValue + ' รายการ'; }
+                    }
+                }
+            },
+            scales: { x: { beginAtZero:true, ticks:{precision:0} }, y: { ticks:{autoSkip:false} } }
         }
-        
-        // Draw actual data bar
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, barWidth, barHeight);
-        
-        // Draw cause name (left side)
-        ctx.fillStyle = '#2d3748';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        const maxLabelWidth = 250;
-        let displayText = item.cause;
-        
-        // Truncate long text with ellipsis
-        if (ctx.measureText(displayText).width > maxLabelWidth) {
-            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
-                displayText = displayText.slice(0, -1);
-            }
-            displayText += '...';
-        }
-        
-        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
-        
-        // Draw count and percentage (right side)
-        const percentage = ((item.count / totalCount) * 100).toFixed(1);
-        ctx.fillStyle = '#2d3748';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
-        
-        // Draw percentage below count
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#666';
-        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
     });
-    
-    // Draw axes
-    ctx.strokeStyle = '#ddd';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(45, 50);
-    ctx.lineTo(45, canvas.height - 70);
-    ctx.lineTo(canvas.width - 45, canvas.height - 70);
-    ctx.stroke();
-    
-    // Draw title
-    ctx.fillStyle = '#2d3748';
-    ctx.font = 'bold 15px Arial';
-    ctx.textAlign = 'center';
-    const title = processFilter === 'all' ? 
-        'Top 5 สาเหตุของข้อผิดพลาด (ทุกกระบวนการ)' : 
-        `Top 5 สาเหตุของข้อผิดพลาด (${processFilter})`;
-    ctx.fillText(title, canvas.width / 2, 25);
 }
 
 // Filter error chart by selected process
@@ -3378,141 +3431,46 @@ function filterErrorByProcess() {
 
 // Generate error chart filtered by process and show top 5
 function generateErrorChartByProcess() {
+    // Render top 5 errors using Chart.js
     const canvas = document.getElementById('errorChart');
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Get filtered data based on selected process and analytics filters
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
-    
-    // Additional filter by process if not 'all'
+
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (errorProcessFilter !== 'all') {
-        filteredData = filteredData.filter(row => {
-            const processValue = (row[5] || '').toString().trim(); // Process is column 5
-            return processValue === errorProcessFilter;
-        });
+        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === errorProcessFilter);
     }
-    
-    // Count errors from filtered data
-    const errorData = {};
+
+    const errorCounts = {};
     filteredData.forEach(row => {
-        const error = (row[6] || '').toString().trim(); // Error detail is column 6
-        if (error) {
-            errorData[error] = (errorData[error] || 0) + 1;
-        }
+        const err = (row[6] || '').toString().trim();
+        if (err) errorCounts[err] = (errorCounts[err] || 0) + 1;
     });
-    
-    const errors = Object.keys(errorData);
-    const counts = Object.values(errorData);
-    
-    if (errors.length === 0) {
-        drawNoDataMessage(ctx, canvas, errorProcessFilter === 'all' ? 'ไม่มีข้อมูลข้อผิดพลาด' : `ไม่มีข้อมูลข้อผิดพลาดสำหรับ ${errorProcessFilter}`);
-        // Update summary info
-        const topErrorEl = document.getElementById('topError');
-        const errorItemCountEl = document.getElementById('errorItemCount');
-        if (topErrorEl) topErrorEl.textContent = '-';
-        if (errorItemCountEl) errorItemCountEl.textContent = '0';
-        return;
-    }
 
-    // Sort and get top 5 errors
-    const sortedData = errors.map((error) => ({
-        error,
-        count: errorData[error]
-    })).sort((a, b) => b.count - a.count).slice(0, 5);
+    const sorted = Object.entries(errorCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
+    const labels = sorted.map(s=>s[0]);
+    const data = sorted.map(s=>s[1]);
 
-    // Update summary info
-    const topError = sortedData[0]?.error || '-';
-    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
     const topErrorEl = document.getElementById('topError');
     const errorItemCountEl = document.getElementById('errorItemCount');
-    
-    if (topErrorEl) topErrorEl.textContent = topError;
-    if (errorItemCountEl) errorItemCountEl.textContent = totalItems;
+    if (topErrorEl) topErrorEl.textContent = labels[0] || '-';
+    if (errorItemCountEl) errorItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
 
-    const maxCount = Math.max(...sortedData.map(item => item.count));
-    const barHeight = 38; // Fixed height for each horizontal bar
-    const maxBarWidth = canvas.width - 260; // Space for labels
-    const startY = 65; // Top margin
-    const barSpacing = 58; // Space between bars
-    
-    // Calculate total for percentage
-    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
-    
-    sortedData.forEach((item, index) => {
-        const barWidth = (item.count / maxCount) * (canvas.width - 40);
-        const x = 20; // Left margin
-        const y = startY + (index * barSpacing); // Horizontal layout
-        
-        // Draw background bar (full width)
-        ctx.fillStyle = '#f5f5f5';
-        ctx.fillRect(x, y, canvas.width - 40, barHeight);
-        
-        // Choose color based on ranking
-        let color;
-        if (index === 0) {
-            color = '#FF9800'; // Orange for #1
-        } else if (index === 1) {
-            color = '#2196F3'; // Blue for #2
-        } else if (index === 2) {
-            color = '#4CAF50'; // Green for #3
-        } else {
-            color = '#9C27B0'; // Purple for others
+    if (errorChartInstance) { try { errorChartInstance.destroy(); } catch(e){} errorChartInstance = null; }
+
+    const palette = ['#FF9800','#2196F3','#4CAF50','#9C27B0','#607D8B'];
+    errorChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: { labels, datasets: [{ data, backgroundColor: palette.slice(0, labels.length), borderRadius:8 }] },
+        options: {
+            indexAxis: 'y',
+            responsive: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(context) { return context.formattedValue + ' รายการ'; } } }
+            },
+            scales: { x: { beginAtZero:true, ticks:{precision:0} }, y: { ticks:{autoSkip:false} } }
         }
-        
-        // Draw actual data bar
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, barWidth, barHeight);
-        
-        // Draw error name (left side)
-        ctx.fillStyle = '#2d3748';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        const maxLabelWidth = 250;
-        let displayText = item.error;
-        
-        // Truncate long text with ellipsis
-        if (ctx.measureText(displayText).width > maxLabelWidth) {
-            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
-                displayText = displayText.slice(0, -1);
-            }
-            displayText += '...';
-        }
-        
-        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
-        
-        // Draw count and percentage (right side)
-        const percentage = ((item.count / totalCount) * 100).toFixed(1);
-        ctx.fillStyle = '#2d3748';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
-        
-        // Draw percentage below count
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#666';
-        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
     });
-    
-    // Draw axes
-    ctx.strokeStyle = '#ddd';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(45, 50);
-    ctx.lineTo(45, canvas.height - 70);
-    ctx.lineTo(canvas.width - 45, canvas.height - 70);
-    ctx.stroke();
-    
-    // Draw title
-    ctx.fillStyle = '#2d3748';
-    ctx.font = 'bold 15px Arial';
-    ctx.textAlign = 'center';
-    const title = errorProcessFilter === 'all' ? 
-        'Top 5 ข้อผิดพลาด (ทุกกระบวนการ)' : 
-        `Top 5 ข้อผิดพลาด (${errorProcessFilter})`;
-    ctx.fillText(title, canvas.width / 2, 25);
 }
 
 // Filter drug chart by selected process
@@ -3560,138 +3518,53 @@ function filterDrugByProcess() {
 function generateDrugChartByProcess() {
     const canvas = document.getElementById('drugChart');
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Get filtered data based on selected process and analytics filters
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData);
-    
-    // Additional filter by process if not 'all'
+
+    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (drugProcessFilter !== 'all') {
-        filteredData = filteredData.filter(row => {
-            const processValue = (row[5] || '').toString().trim(); // Process is column 5
-            return processValue === drugProcessFilter;
-        });
+        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === drugProcessFilter);
     }
-    
-    // Count correct drugs from filtered data
-    const drugData = {};
+
+    const drugCounts = {};
     filteredData.forEach(row => {
-        const correctDrug = (row[7] || '').toString().trim(); // Correct item is column 7
-        if (correctDrug) {
-            drugData[correctDrug] = (drugData[correctDrug] || 0) + 1;
-        }
+        const correctDrug = (row[7] || '').toString().trim();
+        if (correctDrug) drugCounts[correctDrug] = (drugCounts[correctDrug] || 0) + 1;
     });
-    
-    const drugs = Object.keys(drugData);
-    const counts = Object.values(drugData);
-    
-    if (drugs.length === 0) {
-        drawNoDataMessage(ctx, canvas, drugProcessFilter === 'all' ? 'ไม่มีข้อมูลรายการยา' : `ไม่มีข้อมูลรายการยาสำหรับ ${drugProcessFilter}`);
-        // Update summary info
-        const topDrugEl = document.getElementById('topDrug');
-        const drugItemCountEl = document.getElementById('drugItemCount');
-        if (topDrugEl) topDrugEl.textContent = '-';
-        if (drugItemCountEl) drugItemCountEl.textContent = '0';
-        return;
-    }
 
-    // Sort and get top 5 drugs
-    const sortedData = drugs.map((drug) => ({
-        drug,
-        count: drugData[drug]
-    })).sort((a, b) => b.count - a.count).slice(0, 5);
+    const sorted = Object.entries(drugCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
+    const labels = sorted.map(s=>s[0]);
+    const data = sorted.map(s=>s[1]);
 
-    // Update summary info
-    const topDrug = sortedData[0]?.drug || '-';
-    const totalItems = sortedData.reduce((sum, item) => sum + item.count, 0);
     const topDrugEl = document.getElementById('topDrug');
     const drugItemCountEl = document.getElementById('drugItemCount');
-    
-    if (topDrugEl) topDrugEl.textContent = topDrug;
-    if (drugItemCountEl) drugItemCountEl.textContent = totalItems;
+    if (topDrugEl) topDrugEl.textContent = labels[0] || '-';
+    if (drugItemCountEl) drugItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
 
-    const maxCount = Math.max(...sortedData.map(item => item.count));
-    const barHeight = 38; // Fixed height for each horizontal bar
-    const startY = 65; // Top margin
-    const barSpacing = 58; // Space between bars
-    
-    // Calculate total for percentage
-    const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
-    
-    sortedData.forEach((item, index) => {
-        const barWidth = (item.count / maxCount) * (canvas.width - 40);
-        const x = 20; // Left margin
-        const y = startY + (index * barSpacing); // Horizontal layout
-        
-        // Draw background bar (full width)
-        ctx.fillStyle = '#f5f5f5';
-        ctx.fillRect(x, y, canvas.width - 40, barHeight);
-        
-        // Choose color based on ranking
-        let color;
-        if (index === 0) {
-            color = '#9C27B0'; // Purple for #1
-        } else if (index === 1) {
-            color = '#673AB7'; // Deep Purple for #2
-        } else if (index === 2) {
-            color = '#3F51B5'; // Indigo for #3
-        } else {
-            color = '#2196F3'; // Blue for others
-        }
-        
-        // Draw actual data bar
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, barWidth, barHeight);
-        
-        // Draw drug name (left side)
-        ctx.fillStyle = '#2d3748';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        const maxLabelWidth = 250;
-        let displayText = item.drug;
-        
-        // Truncate long text with ellipsis
-        if (ctx.measureText(displayText).width > maxLabelWidth) {
-            while (ctx.measureText(displayText + '...').width > maxLabelWidth && displayText.length > 0) {
-                displayText = displayText.slice(0, -1);
+    if (drugChartInstance) { try { drugChartInstance.destroy(); } catch(e){} drugChartInstance = null; }
+
+    const palette = ['#9C27B0','#673AB7','#3F51B5','#2196F3','#4CAF50'];
+    drugChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: palette.slice(0, labels.length),
+                borderRadius: 8
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(context) { return context.formattedValue + ' รายการ'; } } }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { precision: 0 } },
+                y: { ticks: { autoSkip: false } }
             }
-            displayText += '...';
         }
-        
-        ctx.fillText(displayText, x + 15, y + barHeight / 2 + 5);
-        
-        // Draw count and percentage (right side)
-        const percentage = ((item.count / totalCount) * 100).toFixed(1);
-        ctx.fillStyle = '#2d3748';
-        ctx.font = 'bold 14px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${item.count}`, canvas.width - 80, y + barHeight / 2 - 2);
-        
-        // Draw percentage below count
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#666';
-        ctx.fillText(`${percentage}%`, canvas.width - 80, y + barHeight / 2 + 12);
     });
-    
-    // Draw axes
-    ctx.strokeStyle = '#ddd';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(45, 50);
-    ctx.lineTo(45, canvas.height - 70);
-    ctx.lineTo(canvas.width - 45, canvas.height - 70);
-    ctx.stroke();
-    
-    // Draw title
-    ctx.fillStyle = '#2d3748';
-    ctx.font = 'bold 15px Arial';
-    ctx.textAlign = 'center';
-    const title = drugProcessFilter === 'all' ? 
-        'Top 5 รายการยาที่ถูกต้อง (ทุกกระบวนการ)' : 
-        `Top 5 รายการยาที่ถูกต้อง (${drugProcessFilter})`;
-    ctx.fillText(title, canvas.width / 2, 25);
 }
 
 // Update location ranking

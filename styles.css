@@ -180,6 +180,21 @@ body {
     }
 }
 
+/* Searchable dropdown styles */
+.searchable-dropdown-container input {
+    position: relative;
+    z-index: 1;
+}
+.searchable-dropdown-list {
+    font-size: 14px;
+}
+.searchable-dropdown-list .searchable-item:hover {
+    background: #f0f6ff;
+}
+.searchable-dropdown-list .searchable-item.empty {
+    cursor: default;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -1059,17 +1074,20 @@ table tbody tr.my-report:hover {
 
 .analytics-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px 18px;
-    max-width: 1140px;
+    grid-template-columns: 1fr; /* single column */
+    gap: 20px;
+    max-width: 840px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 12px;
     align-items: stretch;
     grid-template-areas:
-        "process error"
-        "drug cause"
-        "time location"
-        "trend trend";
+        "error"
+        "cause"
+        "drug"
+        "process"
+        "time"
+        "location"
+        "trend";
 }
 
 /* Clean vertical rhythm */
@@ -2318,7 +2336,7 @@ table tbody tr.my-report:hover {
 /* Responsive Design for Analytics Cards */
 @media (max-width: 1400px) {
     .analytics-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr;
         gap: 18px;
         max-width: 1000px;
         padding: 0 16px;
@@ -2336,7 +2354,7 @@ table tbody tr.my-report:hover {
 
 @media (max-width: 1024px) {
     .analytics-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr;
         gap: 16px;
         max-width: 800px;
         padding: 0 16px;
