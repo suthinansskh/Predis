@@ -824,6 +824,52 @@ function validateDrugInput(input) {
     }
 }
 
+// --- Enhanced highlighting helper for dropdown autocomplete ---
+function highlightMultipleMatches(text, query) {
+    if (!query || !text) return text;
+
+    const queryLower = query.toLowerCase();
+    const textLower = text.toLowerCase();
+
+    // Try exact match first
+    let index = textLower.indexOf(queryLower);
+    if (index !== -1) {
+        const before = text.substring(0, index);
+        const match = text.substring(index, index + query.length);
+        const after = text.substring(index + query.length);
+        return `${escapeHtml(before)}<mark class="search-highlight">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+    }
+
+    // Fuzzy highlighting - highlight individual characters that match
+    const queryChars = queryLower.split('');
+    let result = '';
+    let queryIndex = 0;
+
+    for (let i = 0; i < text.length && queryIndex < queryChars.length; i++) {
+        if (textLower[i] === queryChars[queryIndex]) {
+            result += `<mark class="search-highlight">${escapeHtml(text[i])}</mark>`;
+            queryIndex++;
+        } else {
+            result += escapeHtml(text[i]);
+        }
+    }
+
+    // Add remaining characters
+    if (queryIndex < queryChars.length) {
+        // Not all characters matched, return plain text
+        return escapeHtml(text);
+    }
+
+    return result;
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // --- Searchable dropdown enhancement (replaces plain datalist UX) ---
 function setupSearchableDropdowns() {
     const correctInput = document.getElementById('correctItem');
@@ -848,7 +894,6 @@ function makeSearchable(inputEl, options) {
     // Create container
     const container = document.createElement('div');
     container.className = 'searchable-dropdown-container';
-    container.style.position = 'relative';
 
     // Wrap input
     const parent = inputEl.parentNode;
@@ -858,21 +903,7 @@ function makeSearchable(inputEl, options) {
     // Create list box
     const list = document.createElement('div');
     list.className = 'searchable-dropdown-list';
-    list.style.position = 'absolute';
-    list.style.left = '0';
-    list.style.right = '0';
-    list.style.top = '100%';
-    list.style.zIndex = '999';
-    list.style.maxHeight = '220px';
-    list.style.overflow = 'auto';
-    list.style.background = '#fff';
-    list.style.border = '1px solid #ddd';
-    list.style.borderTop = 'none';
-    list.style.boxShadow = '0 4px 8px rgba(0,0,0,0.06)';
     list.style.display = 'none';
-    list.style.padding = '6px 0';
-    list.style.borderRadius = '0 0 6px 6px';
-
     container.appendChild(list);
 
     let filtered = [];
@@ -883,9 +914,7 @@ function makeSearchable(inputEl, options) {
         if (!filtered.length) {
             const item = document.createElement('div');
             item.className = 'searchable-item empty';
-            item.textContent = 'ไม่พบรายการ';
-            item.style.padding = '8px 12px';
-            item.style.color = '#666';
+            item.innerHTML = '<i class="fas fa-search"></i> ไม่พบรายการยาที่ตรงกับการค้นหา';
             list.appendChild(item);
             return;
         }
@@ -893,23 +922,52 @@ function makeSearchable(inputEl, options) {
         filtered.forEach((label, i) => {
             const item = document.createElement('div');
             item.className = 'searchable-item';
-            item.textContent = label;
-            item.style.padding = '8px 12px';
-            item.style.cursor = 'pointer';
-            item.style.whiteSpace = 'nowrap';
-            item.style.overflow = 'hidden';
-            item.style.textOverflow = 'ellipsis';
-            if (i === activeIndex) {
-                item.style.background = '#f0f6ff';
+
+            // Enhanced highlighting with multiple match support
+            const query = inputEl.value.trim();
+            if (query) {
+                item.innerHTML = highlightMultipleMatches(label, query);
+            } else {
+                item.textContent = label;
             }
+
+            // Add active class for keyboard navigation
+            if (i === activeIndex) {
+                item.classList.add('active');
+                // Scroll active item into view
+                setTimeout(() => {
+                    item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }, 10);
+            }
+
             item.addEventListener('mousedown', function(e) {
                 e.preventDefault(); // prevent blur
                 selectIndex(i);
                 hideList();
                 inputEl.focus();
             });
+
+            // Update active index on mouse enter
+            item.addEventListener('mouseenter', function() {
+                activeIndex = i;
+                renderList();
+            });
+
             list.appendChild(item);
         });
+
+        // Add keyboard shortcuts hint at bottom
+        if (filtered.length > 0) {
+            const hint = document.createElement('div');
+            hint.className = 'searchable-dropdown-hint';
+            hint.innerHTML = `
+                <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+                <span><kbd>Tab</kbd> Autocomplete</span>
+                <span><kbd>Enter</kbd> Select</span>
+                <span><kbd>Esc</kbd> Close</span>
+            `;
+            list.appendChild(hint);
+        }
     }
 
     function showList() {
@@ -932,11 +990,62 @@ function makeSearchable(inputEl, options) {
             // show top 30 options when empty
             filtered = options.slice(0, 30);
         } else {
-            filtered = options.filter(o => o.toLowerCase().includes(q)).slice(0, 30);
+            // Advanced fuzzy matching with scoring
+            const scored = options.map(option => {
+                const optionLower = option.toLowerCase();
+                let score = 0;
+
+                // Exact match (highest priority)
+                if (optionLower === q) {
+                    score = 1000;
+                }
+                // Starts with query (very high priority)
+                else if (optionLower.startsWith(q)) {
+                    score = 500;
+                }
+                // Word boundary match (high priority)
+                else if (optionLower.includes(' ' + q) || optionLower.includes('(' + q)) {
+                    score = 300;
+                }
+                // Contains query (medium priority)
+                else if (optionLower.includes(q)) {
+                    score = 200;
+                }
+                // Fuzzy match - all characters present in order
+                else if (fuzzyMatch(q, optionLower)) {
+                    score = 100;
+                }
+                // No match
+                else {
+                    return null;
+                }
+
+                // Boost score for shorter strings (more specific)
+                score += Math.max(0, 50 - option.length);
+
+                return { option, score };
+            })
+            .filter(item => item !== null)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 30)
+            .map(item => item.option);
+
+            filtered = scored;
         }
         activeIndex = -1;
         renderList();
         showList();
+    }
+
+    // Fuzzy matching helper - checks if all characters in query appear in order in target
+    function fuzzyMatch(query, target) {
+        let queryIndex = 0;
+        for (let i = 0; i < target.length && queryIndex < query.length; i++) {
+            if (target[i] === query[queryIndex]) {
+                queryIndex++;
+            }
+        }
+        return queryIndex === query.length;
     }
 
     inputEl.addEventListener('input', function() {
@@ -954,11 +1063,28 @@ function makeSearchable(inputEl, options) {
     });
 
     inputEl.addEventListener('keydown', function(e) {
-        if (list.style.display === 'none') return;
         const key = e.key;
+        const isListVisible = list.style.display !== 'none';
+
+        // Tab key for autocomplete (when list is visible and items available)
+        if (key === 'Tab' && isListVisible && filtered.length > 0) {
+            e.preventDefault();
+            // Autocomplete with first item if no active index
+            const indexToSelect = activeIndex >= 0 ? activeIndex : 0;
+            selectIndex(indexToSelect);
+            hideList();
+            return;
+        }
+
+        if (!isListVisible) return;
+
         if (key === 'ArrowDown') {
             e.preventDefault();
-            activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
+            if (activeIndex < 0) {
+                activeIndex = 0;
+            } else {
+                activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
+            }
             renderList();
         } else if (key === 'ArrowUp') {
             e.preventDefault();
@@ -968,9 +1094,13 @@ function makeSearchable(inputEl, options) {
             e.preventDefault();
             if (activeIndex >= 0) {
                 selectIndex(activeIndex);
+            } else if (filtered.length > 0) {
+                // If no active item, select first one
+                selectIndex(0);
             }
             hideList();
         } else if (key === 'Escape') {
+            e.preventDefault();
             hideList();
         }
     });
@@ -2853,6 +2983,203 @@ function updateDrugStats() {
 
 function filterDrugs() {
     renderDrugTable();
+}
+
+// Modern fuzzy search with intelligent scoring
+function filterDrugsModern() {
+    const tbody = document.getElementById('drugTableBody');
+    const searchTerm = document.getElementById('searchDrug')?.value.trim() || '';
+    const groupFilter = document.getElementById('filterGroup')?.value || '';
+    const hadFilter = document.getElementById('filterHAD')?.value || '';
+    const statusFilter = document.getElementById('filterStatus')?.value || '';
+    const clearBtn = document.getElementById('clearSearchBtn');
+    const resetBtn = document.getElementById('resetFiltersBtn');
+
+    // Show/hide clear button
+    if (clearBtn) {
+        clearBtn.style.display = searchTerm ? 'flex' : 'none';
+    }
+
+    // Check if any filters are active
+    const hasActiveFilters = searchTerm || groupFilter || hadFilter || statusFilter;
+    if (resetBtn) {
+        resetBtn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
+    }
+
+    if (drugListData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">ไม่มีรายการยา</td></tr>';
+        updateResultCount(0);
+        return;
+    }
+
+    let filteredData = drugListData;
+
+    // Apply category filters first
+    if (groupFilter) {
+        filteredData = filteredData.filter(drug => drug.group === groupFilter);
+    }
+    if (hadFilter) {
+        filteredData = filteredData.filter(drug => drug.had === hadFilter);
+    }
+    if (statusFilter) {
+        filteredData = filteredData.filter(drug => drug.status === statusFilter);
+    }
+
+    // Apply fuzzy search if search term exists
+    if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+
+        const scored = filteredData.map(drug => {
+            const codeLower = (drug.drugCode || '').toLowerCase();
+            const nameLower = (drug.drugName || '').toLowerCase();
+            const combinedText = `${codeLower} ${nameLower}`;
+            let score = 0;
+
+            // Exact match (highest priority)
+            if (codeLower === q || nameLower === q) {
+                score = 10000;
+            }
+            // Code starts with query
+            else if (codeLower.startsWith(q)) {
+                score = 5000;
+            }
+            // Name starts with query
+            else if (nameLower.startsWith(q)) {
+                score = 4500;
+            }
+            // Word boundary match in name
+            else if (nameLower.includes(' ' + q) || nameLower.includes('(' + q)) {
+                score = 3000;
+            }
+            // Contains in code
+            else if (codeLower.includes(q)) {
+                score = 2000;
+            }
+            // Contains in name
+            else if (nameLower.includes(q)) {
+                score = 1500;
+            }
+            // Fuzzy match
+            else if (fuzzyMatchDrug(q, combinedText)) {
+                score = 500;
+            }
+            // No match
+            else {
+                return null;
+            }
+
+            // Bonus for exact length match
+            if (codeLower.length === q.length || nameLower.length === q.length) {
+                score += 1000;
+            }
+
+            // Bonus for shorter results (more specific)
+            score += Math.max(0, 100 - combinedText.length);
+
+            return { drug, score };
+        })
+        .filter(item => item !== null)
+        .sort((a, b) => b.score - a.score)
+        .map(item => item.drug);
+
+        filteredData = scored;
+    }
+
+    // Render results
+    if (filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding: 40px;"><i class="fas fa-search" style="font-size: 48px; color: #ddd; display: block; margin-bottom: 10px;"></i><div style="color: #999;">ไม่พบรายการยาที่ตรงกับการค้นหา</div></td></tr>';
+    } else {
+        tbody.innerHTML = filteredData.map(drug => {
+            // Highlight search term in results
+            let displayCode = drug.drugCode;
+            let displayName = drug.drugName;
+
+            if (searchTerm) {
+                displayCode = highlightText(drug.drugCode, searchTerm);
+                displayName = highlightText(drug.drugName, searchTerm);
+            }
+
+            return `
+                <tr class="drug-row">
+                    <td><strong>${displayCode}</strong></td>
+                    <td>${displayName}</td>
+                    <td><span class="tag">${drug.group}</span></td>
+                    <td>
+                        <span class="tag ${drug.had === 'High' ? 'tag-danger' : 'tag-info'}">
+                            ${drug.had}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="tag ${getStatusTagClass(drug.status)}">
+                            ${drug.status}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="editDrug('${drug.drugCode}')" title="แก้ไข">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteDrug('${drug.drugCode}')" title="ลบ">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    updateResultCount(filteredData.length);
+    populateDrugDropdowns();
+}
+
+// Fuzzy matching helper for drug search
+function fuzzyMatchDrug(query, target) {
+    let queryIndex = 0;
+    for (let i = 0; i < target.length && queryIndex < query.length; i++) {
+        if (target[i] === query[queryIndex]) {
+            queryIndex++;
+        }
+    }
+    return queryIndex === query.length;
+}
+
+// Highlight matching text
+function highlightText(text, search) {
+    if (!search || !text) return text;
+
+    const regex = new RegExp(`(${escapeRegex(search)})`, 'gi');
+    return text.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+// Escape special regex characters
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Update result count display
+function updateResultCount(count) {
+    const resultCountEl = document.getElementById('resultCount');
+    if (resultCountEl) {
+        resultCountEl.innerHTML = `<i class="fas fa-list"></i> แสดง <strong>${count}</strong> รายการจากทั้งหมด <strong>${drugListData.length}</strong> รายการ`;
+    }
+}
+
+// Clear search input
+function clearDrugSearch() {
+    const searchInput = document.getElementById('searchDrug');
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+        filterDrugsModern();
+    }
+}
+
+// Reset all filters
+function resetDrugFilters() {
+    document.getElementById('searchDrug').value = '';
+    document.getElementById('filterGroup').value = '';
+    document.getElementById('filterHAD').value = '';
+    document.getElementById('filterStatus').value = '';
+    filterDrugsModern();
 }
 
 function showAddDrugForm() {
