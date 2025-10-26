@@ -851,35 +851,70 @@
                     </form>
                 </div>
 
-                <!-- Search and Filter -->
-                <div class="filter-section">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <input type="text" id="searchDrug" placeholder="ค้นหาจากรหัสยาหรือชื่อยา..." oninput="filterDrugs()">
+                <!-- Modern Search and Filter -->
+                <div class="modern-filter-section">
+                    <div class="search-bar-container">
+                        <div class="search-input-wrapper">
+                            <i class="fas fa-search search-icon"></i>
+                            <input
+                                type="text"
+                                id="searchDrug"
+                                class="modern-search-input"
+                                placeholder="ค้นหารายการยา... (รองรับ fuzzy search)"
+                                oninput="filterDrugsModern()"
+                                autocomplete="off">
+                            <button class="clear-search-btn" id="clearSearchBtn" onclick="clearDrugSearch()" style="display: none;">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <select id="filterGroup" onchange="filterDrugs()">
-                                <option value="">-- ทุกกลุ่มยา --</option>
-                                <option value="Antibiotic">ยาปฏิชีวนะ</option>
-                                <option value="Analgesic">ยาแก้ปวด</option>
-                                <option value="Antihypertensive">ยาลดความดันโลหิต</option>
-                                <option value="Antidiabetic">ยาเบาหวาน</option>
-                                <option value="Vitamin">วิตามิน</option>
-                                <option value="Supplement">อาหารเสริม</option>
-                                <option value="Cardiac">ยาหัวใจ</option>
-                                <option value="Respiratory">ยาระบบหายใจ</option>
-                                <option value="Gastrointestinal">ยาระบบทางเดินอาหาร</option>
-                                <option value="Neurological">ยาระบบประสาท</option>
-                                <option value="Other">อื่นๆ</option>
-                            </select>
+                        <div class="filter-chips-container">
+                            <div class="filter-chip-group">
+                                <label class="filter-chip-label">
+                                    <i class="fas fa-layer-group"></i> กลุ่มยา:
+                                </label>
+                                <select id="filterGroup" class="modern-select" onchange="filterDrugsModern()">
+                                    <option value="">ทั้งหมด</option>
+                                    <option value="Antibiotic">ยาปฏิชีวนะ</option>
+                                    <option value="Analgesic">ยาแก้ปวด</option>
+                                    <option value="Antihypertensive">ยาลดความดันโลหิต</option>
+                                    <option value="Antidiabetic">ยาเบาหวาน</option>
+                                    <option value="Vitamin">วิตามิน</option>
+                                    <option value="Supplement">อาหารเสริม</option>
+                                    <option value="Cardiac">ยาหัวใจ</option>
+                                    <option value="Respiratory">ยาระบบหายใจ</option>
+                                    <option value="Gastrointestinal">ยาระบบทางเดินอาหาร</option>
+                                    <option value="Neurological">ยาระบบประสาท</option>
+                                    <option value="Other">อื่นๆ</option>
+                                </select>
+                            </div>
+                            <div class="filter-chip-group">
+                                <label class="filter-chip-label">
+                                    <i class="fas fa-exclamation-triangle"></i> สถานะ HAD:
+                                </label>
+                                <select id="filterHAD" class="modern-select" onchange="filterDrugsModern()">
+                                    <option value="">ทั้งหมด</option>
+                                    <option value="High">High Alert Drug</option>
+                                    <option value="Regular">ยาทั่วไป</option>
+                                </select>
+                            </div>
+                            <div class="filter-chip-group">
+                                <label class="filter-chip-label">
+                                    <i class="fas fa-toggle-on"></i> สถานะ:
+                                </label>
+                                <select id="filterStatus" class="modern-select" onchange="filterDrugsModern()">
+                                    <option value="">ทั้งหมด</option>
+                                    <option value="Active">ใช้งาน</option>
+                                    <option value="Inactive">ไม่ใช้งาน</option>
+                                    <option value="Discontinued">ยกเลิก</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <select id="filterHAD" onchange="filterDrugs()">
-                                <option value="">-- ทุกสถานะ HAD --</option>
-                                <option value="High">High Alert Drug</option>
-                                <option value="Regular">ยาทั่วไป</option>
-                            </select>
-                        </div>
+                    </div>
+                    <div class="search-results-info" id="searchResultsInfo">
+                        <span id="resultCount">แสดง 0 รายการ</span>
+                        <button class="reset-filters-btn" onclick="resetDrugFilters()" style="display: none;" id="resetFiltersBtn">
+                            <i class="fas fa-undo"></i> รีเซ็ตตัวกรอง
+                        </button>
                     </div>
                 </div>
 
