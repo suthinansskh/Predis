@@ -253,25 +253,24 @@ body {
 }
 
 .searchable-dropdown-list .searchable-item {
-    padding: 12px 16px;
+    padding: 10px 14px;
     cursor: pointer;
     transition: all 0.15s ease;
     border-left: 3px solid transparent;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    position: relative;
 }
 
 .searchable-dropdown-list .searchable-item:hover {
     background: linear-gradient(90deg, #f0f6ff 0%, #fafbff 100%);
     border-left-color: #667eea;
-    padding-left: 20px;
 }
 
 .searchable-dropdown-list .searchable-item.active {
     background: linear-gradient(90deg, #e8f0fe 0%, #f0f6ff 100%);
     border-left-color: #667eea;
-    font-weight: 500;
 }
 
 .searchable-dropdown-list .searchable-item.empty {
@@ -280,48 +279,105 @@ body {
     font-style: italic;
     text-align: center;
     padding: 20px 16px;
+    justify-content: center;
 }
 
 .searchable-dropdown-list .searchable-item.empty:hover {
     background: transparent;
     border-left-color: transparent;
-    padding-left: 16px;
 }
 
-/* Add icon to dropdown items */
-.searchable-dropdown-list .searchable-item:not(.empty)::before {
-    content: '\f484';
-    font-family: 'Font Awesome 6 Free';
-    font-weight: 900;
+/* Pill icon styling */
+.searchable-item-icon {
     color: #667eea;
-    font-size: 12px;
-    opacity: 0.6;
+    font-size: 14px;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
-.searchable-dropdown-list .searchable-item:hover::before,
-.searchable-dropdown-list .searchable-item.active::before {
+.searchable-dropdown-list .searchable-item:hover .searchable-item-icon,
+.searchable-dropdown-list .searchable-item.active .searchable-item-icon {
     opacity: 1;
+    transform: scale(1.1);
 }
 
-/* Autocomplete hint styling */
-.searchable-dropdown-list .searchable-item:first-child:not(.empty)::after {
-    content: 'Tab';
-    position: absolute;
-    right: 16px;
-    font-size: 10px;
-    color: #999;
-    background: #f5f5f5;
-    padding: 2px 6px;
-    border-radius: 3px;
-    border: 1px solid #ddd;
+/* Content wrapper for drug info */
+.searchable-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Drug name and code styling */
+.drug-name {
+    font-weight: 500;
+    color: #2d3748;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.drug-code {
+    font-size: 12px;
+    color: #718096;
     font-family: 'Courier New', monospace;
     font-weight: 600;
-    opacity: 0;
-    transition: opacity 0.2s ease;
 }
 
-.searchable-dropdown-list .searchable-item:first-child:not(.empty):hover::after {
-    opacity: 1;
+.searchable-dropdown-list .searchable-item.active .drug-name {
+    color: #1a202c;
+    font-weight: 600;
+}
+
+.searchable-dropdown-list .searchable-item.active .drug-code {
+    color: #4a5568;
+}
+
+/* Recently used drugs styling */
+.searchable-dropdown-list .searchable-item.recent .searchable-item-icon {
+    color: #f59e0b;
+}
+
+.searchable-section-header {
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #6b7280;
+    background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%);
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
+}
+
+.searchable-section-header i {
+    font-size: 10px;
+    color: #9ca3af;
+}
+
+/* Tab hint badge */
+.tab-hint-badge {
+    position: absolute;
+    right: 14px;
+    font-size: 10px;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid #d1d5db;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.searchable-dropdown-list .searchable-item:first-child:hover .tab-hint-badge {
+    opacity: 0.8;
 }
 
 /* Enhanced search highlight for autocomplete */
