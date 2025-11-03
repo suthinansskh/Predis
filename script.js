@@ -824,6 +824,19 @@ function validateDrugInput(input) {
     }
 }
 
+// --- Debounce helper for better performance ---
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 // --- Enhanced highlighting helper for dropdown autocomplete ---
 function highlightMultipleMatches(text, query) {
     if (!query || !text) return text;
@@ -870,6 +883,32 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// --- Recent Drugs Management (LocalStorage) ---
+function getRecentDrugs() {
+    try {
+        const stored = localStorage.getItem('predis_recent_drugs');
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error('Error reading recent drugs:', e);
+        return [];
+    }
+}
+
+function saveRecentDrug(drugLabel) {
+    try {
+        let recent = getRecentDrugs();
+        // Remove if already exists
+        recent = recent.filter(d => d !== drugLabel);
+        // Add to beginning
+        recent.unshift(drugLabel);
+        // Keep only last 10
+        recent = recent.slice(0, 10);
+        localStorage.setItem('predis_recent_drugs', JSON.stringify(recent));
+    } catch (e) {
+        console.error('Error saving recent drug:', e);
+    }
+}
+
 // --- Searchable dropdown enhancement (replaces plain datalist UX) ---
 function setupSearchableDropdowns() {
     const correctInput = document.getElementById('correctItem');
@@ -900,14 +939,25 @@ function makeSearchable(inputEl, options) {
     parent.replaceChild(container, inputEl);
     container.appendChild(inputEl);
 
+    // Add ARIA attributes for accessibility
+    inputEl.setAttribute('role', 'combobox');
+    inputEl.setAttribute('aria-autocomplete', 'list');
+    inputEl.setAttribute('aria-expanded', 'false');
+    inputEl.setAttribute('aria-haspopup', 'listbox');
+
     // Create list box
     const list = document.createElement('div');
     list.className = 'searchable-dropdown-list';
     list.style.display = 'none';
+    list.setAttribute('role', 'listbox');
+    const listId = 'dropdown-list-' + Math.random().toString(36).substr(2, 9);
+    list.id = listId;
+    inputEl.setAttribute('aria-owns', listId);
     container.appendChild(list);
 
     let filtered = [];
     let activeIndex = -1;
+    let recentDrugs = getRecentDrugs();
 
     function renderList() {
         list.innerHTML = '';
@@ -915,25 +965,76 @@ function makeSearchable(inputEl, options) {
             const item = document.createElement('div');
             item.className = 'searchable-item empty';
             item.innerHTML = '<i class="fas fa-search"></i> ไม่พบรายการยาที่ตรงกับการค้นหา';
+            item.setAttribute('role', 'option');
+            item.setAttribute('aria-disabled', 'true');
             list.appendChild(item);
             return;
+        }
+
+        // Show recently used drugs section if no search query
+        const query = inputEl.value.trim();
+        if (!query && recentDrugs.length > 0) {
+            const recentHeader = document.createElement('div');
+            recentHeader.className = 'searchable-section-header';
+            recentHeader.innerHTML = '<i class="fas fa-clock"></i> ใช้ล่าสุด';
+            list.appendChild(recentHeader);
         }
 
         filtered.forEach((label, i) => {
             const item = document.createElement('div');
             item.className = 'searchable-item';
+            item.setAttribute('role', 'option');
+            item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
+
+            // Parse drug name and code
+            const match = label.match(/^(.+?)\s*\(([^)]+)\)$/);
+            const drugName = match ? match[1].trim() : label;
+            const drugCode = match ? match[2].trim() : '';
+
+            // Create icon
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-pills searchable-item-icon';
+
+            // Create content wrapper
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'searchable-item-content';
 
             // Enhanced highlighting with multiple match support
-            const query = inputEl.value.trim();
             if (query) {
-                item.innerHTML = highlightMultipleMatches(label, query);
+                const highlightedName = highlightMultipleMatches(drugName, query);
+                const highlightedCode = drugCode ? highlightMultipleMatches(drugCode, query) : '';
+
+                contentWrapper.innerHTML = `
+                    <span class="drug-name">${highlightedName}</span>
+                    ${drugCode ? `<span class="drug-code">${highlightedCode}</span>` : ''}
+                `;
             } else {
-                item.textContent = label;
+                contentWrapper.innerHTML = `
+                    <span class="drug-name">${escapeHtml(drugName)}</span>
+                    ${drugCode ? `<span class="drug-code">${escapeHtml(drugCode)}</span>` : ''}
+                `;
+            }
+
+            // Check if this is a recently used drug
+            if (!query && recentDrugs.includes(label)) {
+                item.classList.add('recent');
+            }
+
+            item.appendChild(icon);
+            item.appendChild(contentWrapper);
+
+            // Add Tab hint badge to first item
+            if (i === 0 && filtered.length > 0) {
+                const tabBadge = document.createElement('span');
+                tabBadge.className = 'tab-hint-badge';
+                tabBadge.textContent = 'Tab';
+                item.appendChild(tabBadge);
             }
 
             // Add active class for keyboard navigation
             if (i === activeIndex) {
                 item.classList.add('active');
+                inputEl.setAttribute('aria-activedescendant', item.id || '');
                 // Scroll active item into view
                 setTimeout(() => {
                     item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -972,23 +1073,35 @@ function makeSearchable(inputEl, options) {
 
     function showList() {
         list.style.display = 'block';
+        inputEl.setAttribute('aria-expanded', 'true');
     }
+
     function hideList() {
         list.style.display = 'none';
+        inputEl.setAttribute('aria-expanded', 'false');
         activeIndex = -1;
     }
 
     function selectIndex(i) {
         if (i < 0 || i >= filtered.length) return;
-        inputEl.value = filtered[i];
+        const selectedDrug = filtered[i];
+        inputEl.value = selectedDrug;
+
+        // Save to recent drugs
+        saveRecentDrug(selectedDrug);
+        recentDrugs = getRecentDrugs();
+
         validateDrugInput(inputEl);
     }
 
     function updateFilter(value) {
         const q = (value || '').toLowerCase().trim();
         if (!q) {
-            // show top 30 options when empty
-            filtered = options.slice(0, 30);
+            // Show recent drugs first, then top options
+            const recentSet = new Set(recentDrugs);
+            const recentItems = options.filter(opt => recentSet.has(opt)).slice(0, 5);
+            const otherItems = options.filter(opt => !recentSet.has(opt)).slice(0, 25);
+            filtered = [...recentItems, ...otherItems];
         } else {
             // Advanced fuzzy matching with scoring
             const scored = options.map(option => {
@@ -1020,6 +1133,11 @@ function makeSearchable(inputEl, options) {
                     return null;
                 }
 
+                // Boost score for recently used drugs
+                if (recentDrugs.includes(option)) {
+                    score += 50;
+                }
+
                 // Boost score for shorter strings (more specific)
                 score += Math.max(0, 50 - option.length);
 
@@ -1048,8 +1166,19 @@ function makeSearchable(inputEl, options) {
         return queryIndex === query.length;
     }
 
+    // Debounced update filter for better performance
+    const debouncedUpdateFilter = debounce((value) => {
+        updateFilter(value);
+    }, 200);
+
     inputEl.addEventListener('input', function() {
-        updateFilter(this.value);
+        // Immediate visual feedback
+        const q = this.value.trim();
+        if (!q) {
+            updateFilter(this.value);
+        } else {
+            debouncedUpdateFilter(this.value);
+        }
         validateDrugInput(this);
     });
 
