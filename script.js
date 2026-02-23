@@ -535,7 +535,6 @@ async function appendToGoogleSheet(data) {
             formData.append('cause', data.cause);
             formData.append('additionalDetails', data.additionalDetails || '');
             formData.append('reporter', data.reporter);
-            if (data.submissionToken) formData.append('submissionToken', data.submissionToken);
 
             // Create a simple POST request without custom headers
             const response = await fetch(googleSheetsConfig.webAppUrl, {
