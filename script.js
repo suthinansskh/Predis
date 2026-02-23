@@ -865,9 +865,12 @@ function highlightMultipleMatches(text, query) {
 
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // --- Searchable dropdown enhancement (replaces plain datalist UX) ---
@@ -947,10 +950,11 @@ function makeSearchable(inputEl, options) {
                 inputEl.focus();
             });
 
-            // Update active index on mouse enter
             item.addEventListener('mouseenter', function() {
+                const prevActive = list.querySelector('.searchable-item.active');
+                if (prevActive) prevActive.classList.remove('active');
                 activeIndex = i;
-                renderList();
+                this.classList.add('active');
             });
 
             list.appendChild(item);
@@ -2971,10 +2975,15 @@ function getStatusTagClass(status) {
 
 function updateDrugStats() {
     const total = drugListData.length;
-    const hadDrugs = drugListData.filter(drug => drug.had === 'High').length;
-    const activeDrugs = drugListData.filter(drug => drug.status === 'Active').length;
-    const inactiveDrugs = drugListData.filter(drug => drug.status !== 'Active').length;
-    
+    let hadDrugs = 0, activeDrugs = 0, inactiveDrugs = 0;
+    for (const drug of drugListData) {
+        if (drug.had === 'High') hadDrugs++;
+        if (drug.status === 'Active') {
+            activeDrugs++;
+        } else {
+            inactiveDrugs++;
+        }
+    }
     document.getElementById('totalDrugs').textContent = total;
     document.getElementById('hadDrugs').textContent = hadDrugs;
     document.getElementById('activeDrugs').textContent = activeDrugs;
@@ -2985,8 +2994,16 @@ function filterDrugs() {
     renderDrugTable();
 }
 
+// Debounce timer for drug search input
+let _drugSearchTimer = null;
+
 // Modern fuzzy search with intelligent scoring
 function filterDrugsModern() {
+    clearTimeout(_drugSearchTimer);
+    _drugSearchTimer = setTimeout(_filterDrugsModernImpl, 200);
+}
+
+function _filterDrugsModernImpl() {
     const tbody = document.getElementById('drugTableBody');
     const searchTerm = document.getElementById('searchDrug')?.value.trim() || '';
     const groupFilter = document.getElementById('filterGroup')?.value || '';
@@ -3128,7 +3145,6 @@ function filterDrugsModern() {
     }
 
     updateResultCount(filteredData.length);
-    populateDrugDropdowns();
 }
 
 // Fuzzy matching helper for drug search
