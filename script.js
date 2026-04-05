@@ -3592,14 +3592,12 @@ function createSampleDrugData() {
 
 // ฟังก์ชันแสดงรายการ HAD จากฐานข้อมูล
 function displayHADListFromDatabase(drugList) {
-    console.log('🚨 === รายการ High Alert Drugs (HAD) จากฐานข้อมูล ===');
-
     // กรองเฉพาะยา HAD
     const hadDrugs = drugList.filter(drug => drug.had === 'High' && drug.status === 'Active');
 
     if (hadDrugs.length === 0) {
-        console.log('❌ ไม่พบรายการ HAD ในฐานข้อมูล');
-        showNotification('ไม่พบรายการ High Alert Drugs ในฐานข้อมูล', 'warning');
+        // อัปเดต global list เท่านั้น ไม่ต้องแจ้งเตือนใดๆ หากไม่มี HAD
+        globalDrugList = drugList;
         return;
     }
 
