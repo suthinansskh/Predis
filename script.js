@@ -997,8 +997,12 @@ function setupSearchableDropdowns() {
 }
 
 function makeSearchable(inputEl, optionsOrGetter) {
-    // If already initialized, getter always provides fresh data
+    // Track if already initialized on this element
     if (inputEl._searchableInit) {
+        // If already initialized, just ensure we update the filter to reflect any new data
+        if (typeof inputEl._updateFilter === 'function') {
+            inputEl._updateFilter(inputEl.value);
+        }
         return;
     }
     inputEl._searchableInit = true;
@@ -1032,7 +1036,14 @@ function makeSearchable(inputEl, optionsOrGetter) {
         if (!filtered.length) {
             const item = document.createElement('div');
             item.className = 'searchable-item empty';
-            item.innerHTML = '<i class="fas fa-search"></i> ไม่พบรายการยาที่ตรงกับการค้นหา';
+            
+            // Helpful message if no data exists versus no match
+            const totalOptions = getOptions().length;
+            if (totalOptions === 0) {
+                item.innerHTML = '<i class="fas fa-sync fa-spin"></i> กำลังโหลดรายการยา หรือยังไม่มีข้อมูล...';
+            } else {
+                item.innerHTML = '<i class="fas fa-search"></i> ไม่พบรายการยาที่ตรงกับการค้นหา';
+            }
             list.appendChild(item);
             return;
         }
@@ -1167,6 +1178,9 @@ function makeSearchable(inputEl, optionsOrGetter) {
         renderList();
         showList();
     }
+    
+    // Store update function on element for external triggers
+    inputEl._updateFilter = updateFilter;
 
     // Fuzzy matching helper - checks if all characters in query appear in order in target
     function fuzzyMatch(query, target) {
@@ -1276,19 +1290,42 @@ async function handleFormSubmit(event) {
     if (errorData.correctItem && drugListData && drugListData.length > 0) {
         const activeDrugs = drugListData.filter(d => d.status === 'Active');
         const isValid = activeDrugs.some(drug => {
-            const displayText = drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode;
-            return displayText === errorData.correctItem;
+            const displayText = (drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode).trim();
+            // Case-insensitive comparison and trim whitespace
+            return displayText.toLowerCase() === errorData.correctItem.trim().toLowerCase();
         });
+
         if (!isValid) {
-            showNotification('กรุณาเลือกรายการยาที่ถูกต้องจากรายการ', 'warning');
-            const correctInput = document.getElementById('correctItem');
-            if (correctInput) {
-                correctInput.focus();
-                correctInput.style.borderColor = '#DC2626';
+            // Check if it's a perfect manual match that just needs selection
+            const query = errorData.correctItem.trim().toLowerCase();
+            const closest = activeDrugs.find(drug => {
+                const text = (drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode).trim().toLowerCase();
+                return text === query || drug.drugCode.toLowerCase() === query;
+            });
+
+            if (closest) {
+                // Auto-fix if it's a clear match
+                const fixedValue = closest.drugName ? `${closest.drugName} (${closest.drugCode})` : closest.drugCode;
+                document.getElementById('correctItem').value = fixedValue;
+                errorData.correctItem = fixedValue;
+            } else {
+                showNotification('กรุณาเลือกรายการยาที่มีอยู่ในระบบเท่านั้น', 'warning');
+                const correctInput = document.getElementById('correctItem');
+                if (correctInput) {
+                    correctInput.focus();
+                    correctInput.classList.add('invalid-shake');
+                    correctInput.style.borderColor = '#DC2626';
+                    setTimeout(() => correctInput.classList.remove('invalid-shake'), 500);
+                }
+                isSubmitting = false;
+                return;
             }
-            isSubmitting = false;
-            return;
         }
+    } else if (errorData.correctItem && (!drugListData || drugListData.length === 0)) {
+        // Option fallback: Allow submission if list failed to load but data was typed
+        // Or show a warning depending on business rules
+        console.warn('Submitting with typed drug while list is empty');
+        showNotification('คำเตือน: บันทึกโดยที่ยังไม่ได้โหลดรายการยา ข้อมูลอาจไม่สมบูรณ์', 'warning');
     }
 
     // Add idempotency submission token
