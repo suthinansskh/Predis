@@ -1226,6 +1226,23 @@ function makeSearchable(inputEl, optionsOrGetter) {
     });
 
     inputEl.addEventListener('blur', function () {
+        const val = this.value.trim().toLowerCase();
+        const options = getOptions();
+        const isFullMatch = options.some(opt => opt.toLowerCase() === val);
+        
+        // Auto-complete to the best match if they leave the field without selecting (e.g., clicking Submit)
+        if (val && !isFullMatch && filtered.length > 0) {
+            const indexToSelect = activeIndex >= 0 ? activeIndex : 0;
+            this.value = filtered[indexToSelect];
+            
+            // Dispatch events so validation and HAD checks trigger properly
+            this.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { fromMenu: true } }));
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            validateDrugInput(this);
+            this._justSelected = true;
+        }
+
         // small timeout to allow mousedown selection
         setTimeout(() => hideList(), 150);
     });
