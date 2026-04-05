@@ -1073,7 +1073,6 @@ function makeSearchable(inputEl, optionsOrGetter) {
                 e.preventDefault(); // prevent blur
                 selectIndex(i);
                 hideList();
-                inputEl.focus();
             };
             item.addEventListener('mousedown', handleSelect);
             item.addEventListener('touchstart', handleSelect, { passive: false });
@@ -1112,12 +1111,26 @@ function makeSearchable(inputEl, optionsOrGetter) {
     function selectIndex(i) {
         if (i < 0 || i >= filtered.length) return;
         inputEl.value = filtered[i];
+        
+        // Let the rest of the application know the value changed
+        inputEl.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { fromMenu: true } }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        
         validateDrugInput(inputEl);
+        inputEl._justSelected = true; // Prevent immediate re-opening on focus
     }
 
     function updateFilter(value) {
         const options = getOptions();
         const q = (value || '').toLowerCase().trim();
+        
+        // If the exact value is already selected and matches perfectly, don't show the list again
+        if (inputEl._justSelected) {
+            inputEl._justSelected = false; // Reset the flag
+            hideList();
+            return;
+        }
+
         if (!q) {
             // show top 30 options when empty
             filtered = options.slice(0, 30);
@@ -1198,7 +1211,8 @@ function makeSearchable(inputEl, optionsOrGetter) {
     // Debounce timer for search performance
     let debounceTimer = null;
 
-    inputEl.addEventListener('input', function () {
+    inputEl.addEventListener('input', function (e) {
+        if (e.detail && e.detail.fromMenu) return; // Skip if triggered from menu selection
         clearTimeout(debounceTimer);
         const self = this;
         debounceTimer = setTimeout(() => {
