@@ -16,12 +16,12 @@
 - [x] Compile the Project
 	<!-- No compilation needed for static web app -->
 
-- [ ] Create and Run Task
+- [x] Create and Run Task
 	<!--
 	Create task to launch Live Server for development
 	-->
 
-- [ ] Launch the Project
+- [x] Launch the Project
 	<!--
 	Launch Live Server to view the application
 	-->

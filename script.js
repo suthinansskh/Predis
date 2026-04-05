@@ -3,51 +3,118 @@ let globalDrugList = [];
 let globalUsersData = [];
 let currentUser = null;
 
+// Multi-page detection: 'index' (druglist/settings), 'report', 'dashboard'
+const currentPage = (document.body && document.body.dataset.page) || 'main';
+
+// Page-to-section mapping for multi-page navigation
+const PAGE_SECTION_MAP = {
+    'report': 'form',
+    'dashboard': 'dashboard',
+    'myreport': 'myreport',
+    'index': 'druglist'
+};
+
+// Navigate to a section — cross-page if needed
+function navigateTo(event, sectionName) {
+    // If the section exists on the current page, show it directly
+    const targetSection = document.getElementById(sectionName);
+    if (targetSection) {
+        if (event) event.preventDefault();
+        showSection(sectionName);
+        return;
+    }
+    // Otherwise, navigate to the correct page
+    const pageMap = {
+        'form': 'report.html',
+        'dashboard': 'dashboard.html',
+        'myreport': 'myreport.html',
+        'druglist': 'index.html#druglist',
+        'settings': 'index.html#settings'
+    };
+    const targetUrl = pageMap[sectionName];
+    if (targetUrl) {
+        if (event) event.preventDefault();
+        window.location.href = targetUrl;
+    }
+}
+
+// RBAC helper — checks if current user has one of the allowed levels
+function hasRole(...roles) {
+    return currentUser && roles.includes(currentUser.level);
+}
+
 // Chart.js instances (for charts 1-4)
 let processChartInstance = null;
 let errorChartInstance = null;
 let causeChartInstance = null;
 let drugChartInstance = null;
+let trendChartInstance = null;
 
+// ⚠️ ห้าม hardcode credentials ใน source code
+// ค่าเหล่านี้ต้องตั้งผ่านหน้า Settings และจะถูกเก็บใน localStorage
 let googleSheetsConfig = {
-    apiKey: 'AIzaSyCF-pWr13N_s7Iu868nSa6cPiMxDduuJ1k',
-    spreadsheetId: '1QDIxEXCVLiA7oijXN15N2ZH2LzPtHDecbqolYGs9Ldk',
+    apiKey: '',           // กรอกใน Settings
+    spreadsheetId: '',    // กรอกใน Settings
     sheetName: 'Predispensing_Errors',
     userSheetName: 'Users',
     drugSheetName: 'Drug_List',
-    webAppUrl: 'https://script.google.com/macros/s/AKfycbzMfgXu9oscmYS_wXPX6rpdJeeZTj6w4uFxB_rPnYC8XVd6amwGGKHibHk5Iw2fw72E/exec' // ใส่ Google Apps Script Web App URL ที่ได้จาก Deploy
+    webAppUrl: 'https://script.google.com/macros/s/AKfycbyKiaS7Y2l63sh0jfa56ZK4Ambw96VGo4bFxt1BNIbaIC5Btc7NEK3dpL-FkDQsWi7O/exec',
+    externalDrugSourceUrl: '',
+    externalDrugSourceToken: '',
+    externalDrugSourceFormat: 'json',
+    externalDrugDataPath: '',
+    externalDrugAutoSyncMinutes: 0
 };
 
-// Central demo users definition (ลดการซ้ำซ้อน)
+const LATEST_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyKiaS7Y2l63sh0jfa56ZK4Ambw96VGo4bFxt1BNIbaIC5Btc7NEK3dpL-FkDQsWi7O/exec';
+const LEGACY_WEB_APP_URLS = new Set([
+    'https://script.google.com/macros/s/AKfycbxoWSzWw3LfCJK4ft2sAa22edpfla8mbqgd7MsFmgyBFvT_NucqkDxAaa3u9bINR8-q/exec',
+    'https://script.google.com/macros/s/AKfycbxIhZ0_O49pc7SH_NzQA4uHI5pk4C7Z-vPU4_XAkLejGfWdXgfMAICCFBXyetq8skML/exec',
+    'https://script.google.com/macros/s/AKfycbzZZHfdxkwD8epW7EXaGhURwmtPxsshEMcgpNY65D7Po4GCbKPPwrv4-oA9jKNBGLDE/exec',
+    'https://script.google.com/macros/s/AKfycbyi4oXB8wVVrTOYcflQGkAsmUeUMeL7V1EWSCXyuZaerQgn_ZvTN1j7tfa43eYjupaZ/exec',
+    'https://script.google.com/macros/s/AKfycbx8R1C94ZkBvVgjda5-yk9pU1QHxOzZjnjICELyprZUdskVzrSRr3JTjyK42lmC_PiS/exec',
+    'https://script.google.com/macros/s/AKfycbxgBw7hox7PC8aTxunl_4AygK9j1qHVhzwNAKrYa57GasvgsF5I0Fn2otEVpE0CL5U/exec'
+]);
+
+function normalizeWebAppUrl(url) {
+    const trimmedUrl = (url || '').trim();
+    if (!trimmedUrl || LEGACY_WEB_APP_URLS.has(trimmedUrl)) {
+        return LATEST_WEB_APP_URL;
+    }
+    return trimmedUrl;
+}
+
+// ค่า config ที่ deploy ใช้จริงจะโหลดจาก localStorage ใน loadConfig()
+
+// Central demo users — ใช้เฉพาะเมื่อไม่ได้ตั้งค่า webAppUrl (Demo Mode)
+// ⚠️ ห้ามใส่ข้อมูลจริงของบุคลากร (ชื่อจริง / เลขบัตรประชาชน)
 const DEMO_USERS = [
-    // เภสัชกร
-    { psCode: 'P01', id13: '1234567890123', name: 'ทดสอบ ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
-    { psCode: 'P02', id13: '3460700549570', name: 'ภญ.อาศิรา ภูศรีดาว', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-    { psCode: 'P03', id13: '3349900018143', name: 'ภญ.ชุติธนา ภัทรทิวานนท์', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-    { psCode: 'P12', id13: '3100200159376', name: 'ภญ.ภิญรัตน์ มหาลีวีรัศมี', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-    { psCode: 'P13', id13: '3320100275241', name: 'ภก.สุทธินันท์ เอิกเกริก', group: 'เภสัชกร', level: 'admin', email: 's.oekaroek@gmail.com', password: 'admin123', status: true },
-    { psCode: 'P22', id13: '1339900076651', name: 'ภญ.สิริกัณยา มหาลวเลิศ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
-    { psCode: 'P25', id13: '1450600156880', name: 'ภก.สุริยา แก้วภูมิแห่', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '๑๑๒๓๔๕', status: true },
-    // เจ้าพนักงานเภสัชกรรม
-    { psCode: 'S01', id13: '3330200181795', name: 'นายปริญญา นามวงศ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-    { psCode: 'S02', id13: '3339900154217', name: 'นางกรรณิการ์ คำพิทักษ์', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
-    { psCode: 'S19', id13: '1331500052618', name: 'นางสาวศศิประภา มงคลแก้ว', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '12345', status: true },
+    // เภสัชกร (ข้อมูลสมมุติ)
+    { psCode: 'P01', id13: '0000000000001', name: 'ภก.ตัวอย่าง ทดสอบ', group: 'เภสัชกร', level: 'supervisor', email: '', password: '@12345', status: true },
+    { psCode: 'P02', id13: '0000000000002', name: 'ภญ.สมใจ ทดสอบ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    { psCode: 'P03', id13: '0000000000003', name: 'ภญ.สมหมาย ทดสอบ', group: 'เภสัชกร', level: 'pharmacist', email: '', password: '@12345', status: true },
+    // เจ้าพนักงานเภสัชกรรม (ข้อมูลสมมุติ)
+    { psCode: 'S01', id13: '0000000000011', name: 'นายสมชาย ทดสอบ', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
+    { psCode: 'S02', id13: '0000000000012', name: 'นางสาวสมหญิง ทดสอบ', group: 'เจ้าพนักงานเภสัชกรรม', level: 'user', email: '', password: '@12345', status: true },
     // Admin สำหรับทดสอบ
-    { psCode: 'admin', id13: '9999999999999', name: 'ผู้ดูแลระบบ', group: 'IT', level: 'admin', email: 'admin@hospital.com', password: 'admin123', status: true }
+    { psCode: 'admin', id13: '0000000000099', name: 'ผู้ดูแลระบบ (Demo)', group: 'IT', level: 'admin', email: 'admin@demo.local', password: 'Admin@1234', status: true }
 ];
 
 function findDemoUser(userCode, password) {
     const codeLower = userCode.toLowerCase();
-    return DEMO_USERS.find(u => (
-        (u.psCode && u.psCode.toLowerCase() === codeLower) ||
-        (u.id13 && u.id13.toLowerCase() === codeLower)
-    ) && u.password === password);
+    return DEMO_USERS.find(u => {
+        const matchCode = (u.psCode && u.psCode.toLowerCase() === codeLower) ||
+                          (u.id13 && u.id13.toLowerCase() === codeLower);
+        if (!matchCode || !u.status) return false;
+        // Demo mode: ใช้ password ที่กำหนดไว้ใน DEMO_USERS
+        return password === u.password;
+    });
 }
 
 // Authentication and User Management
 function checkAuthentication() {
     const storedUser = localStorage.getItem('currentUser');
-    
+
     if (storedUser) {
         try {
             currentUser = JSON.parse(storedUser);
@@ -68,42 +135,58 @@ function showLoginPage() {
 }
 
 function showMainApp() {
-    
+
     document.getElementById('login').style.display = 'none';
     document.getElementById('mainApp').style.display = 'block';
-    
+
     // Update user display
     const userNameEl = document.getElementById('userName');
     if (userNameEl && currentUser) {
         userNameEl.textContent = currentUser.name || currentUser.psCode;
     }
-    
+
+    // RBAC: hide settings tab for non-admin users
+    const navBtns = document.querySelectorAll('.nav-btn');
+    navBtns.forEach(btn => {
+        if (btn.textContent.includes('ตั้งค่า')) {
+            btn.style.display = hasRole('admin') ? '' : 'none';
+        }
+    });
+
+    // RBAC: hide add drug button for non-privileged users
+    const addDrugBtn = document.getElementById('addDrugBtn');
+    if (addDrugBtn) {
+        addDrugBtn.style.display = hasRole('admin', 'supervisor', 'pharmacist') ? '' : 'none';
+    }
+
     // Wait a bit for DOM to be ready then update reporter field
     setTimeout(() => { updateReporterField(); }, 100);
-    
+
     // Update dashboard user info
     updateDashboardUserInfo();
-    
-    // Load initial data
-    loadData();
+
+    // Load initial data based on current page
+    if (currentPage === 'dashboard' || currentPage === 'myreport') {
+        loadData();
+    }
 }
 
 function updateReporterField() {
-    
+
     const reporterEl = document.getElementById('reporter');
-    
+
     if (!reporterEl) {
-    console.error('Reporter element not found in DOM');
+        console.error('Reporter element not found in DOM');
         // Try to find it with query selector
         const altReporter = document.querySelector('input[name="reporter"]');
         return;
     }
-    
+
     if (currentUser) {
         // รูปแบบ: ชื่อ-นามสกุล (PS Code) - กลุ่ม/ระดับ
         const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
         reporterEl.value = reporterValue;
-        
+
         // Force visual update
         reporterEl.dispatchEvent(new Event('input', { bubbles: true }));
         reporterEl.dispatchEvent(new Event('change', { bubbles: true }));
@@ -116,15 +199,15 @@ function updateReporterField() {
 function updateDashboardUserInfo() {
     const currentUserDisplay = document.getElementById('currentUserDisplay');
     const currentGroupDisplay = document.getElementById('currentGroupDisplay');
-    
+
     if (currentUserDisplay && currentUser) {
         currentUserDisplay.textContent = currentUser.name;
     }
-    
+
     if (currentGroupDisplay && currentUser) {
         currentGroupDisplay.textContent = currentUser.group || 'ไม่ระบุ';
     }
-    
+
     // Set default filter to show current user's reports
     const filterUser = document.getElementById('filterUser');
     if (filterUser && currentUser) {
@@ -139,38 +222,39 @@ function updateDashboardUserInfo() {
 
 async function handleLogin(event) {
     event.preventDefault();
-    
+
     const formData = new FormData(event.target);
     const userCode = formData.get('userCode').trim();
     const password = formData.get('password').trim();
-    
+
     if (!userCode) {
         showNotification('กรุณาใส่ PS Code หรือ ID13', 'error');
         return;
     }
-    
+
     if (!password) {
         showNotification('กรุณาใส่รหัสผ่าน', 'error');
         return;
     }
-    
+
     // Show loading
     const loginBtn = event.target.querySelector('.login-btn');
     const originalText = loginBtn.innerHTML;
     loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังตรวจสอบ...';
     loginBtn.disabled = true;
-    
+
     try {
         const user = await authenticateUser(userCode, password);
         console.log('=== Login Result ===');
         console.log('Authenticated user:', user);
-        
+
         if (user) {
             currentUser = user;
             localStorage.setItem('currentUser', JSON.stringify(user));
             console.log('currentUser set to:', currentUser);
             showNotification(`ยินดีต้อนรับ ${user.name} (${user.group} - ${user.level})`, 'success');
             showMainApp();
+            initializeApp();
         } else {
             showNotification('ไม่พบผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบข้อมูลอีกครั้ง', 'error');
         }
@@ -184,81 +268,57 @@ async function handleLogin(event) {
 }
 
 async function authenticateUser(userCode, password) {
-    // ตรวจสอบว่าตั้งค่า Google Apps Script หรือยัง
-    if (!googleSheetsConfig.webAppUrl || googleSheetsConfig.webAppUrl.trim() === '') {
-    // Demo Mode authentication
-    const user = findDemoUser(userCode, password);
+    // ถ้ามี webAppUrl = Production Mode: ตรวจสอบฝั่ง Server
+    if (googleSheetsConfig.webAppUrl && googleSheetsConfig.webAppUrl.trim() !== '') {
+    // Production Mode: ใช้ GET เพื่อหลีกเลี่ยงปัญหา CORS/redirect ของ Apps Script POST
+    try {
+        const loginUrl = new URL(googleSheetsConfig.webAppUrl);
+        loginUrl.searchParams.set('action', 'login');
+        loginUrl.searchParams.set('userCode', userCode);
+        loginUrl.searchParams.set('password', password);
+
+        const response = await fetch(loginUrl.toString(), {
+            method: 'GET',
+            redirect: 'follow'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const responseText = await response.text();
+        console.log('Login raw response:', responseText.substring(0, 500));
         
-        if (user) {
-            console.log('Demo login success', user.name);
-            return user;
-        } else {
-            console.warn('Demo login failed for userCode:', userCode);
-            return null;
-        }
-    } else {
-        // Production Mode: ใช้ Google Apps Script เพื่อตรวจสอบผู้ใช้จากข้อมูลจริง
+        let data;
         try {
-            console.log('Prod auth request', userCode);
-            
-            // ใช้ GET request เพื่อหลีกเลี่ยง CORS preflight
-            const url = new URL(googleSheetsConfig.webAppUrl);
-            url.searchParams.append('action', 'getUsers');
-            url.searchParams.append('userCode', userCode);
-            url.searchParams.append('password', password);
-            
-            const response = await fetch(url.toString(), {
-                method: 'GET',
-                mode: 'cors'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(data.error || 'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้');
-            }
-            
-            // ค้นหาผู้ใช้จากข้อมูลจริงและตรวจสอบรหัสผ่าน
-            const user = data.users.find(u => 
-                ((u.psCode && u.psCode.toLowerCase() === userCode.toLowerCase()) ||
-                 (u.id13 && u.id13.toLowerCase() === userCode.toLowerCase())) &&
-                u.password === password
-            );
-            
-            // ตรวจสอบสถานะการใช้งาน
-            if (user && user.status === false) {
-                throw new Error('บัญชีผู้ใช้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
-            }
-            
-            if (user) {
-                console.log('Prod login success', user.name);
-                return user;
-            } else {
-                console.warn('Prod login failed for', userCode);
-                return null;
-            }
-            
-        } catch (error) {
-            console.error('Prod auth error:', error.message);
-            
-            // Check if it's a CORS or network error and show appropriate message
-            if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-                console.warn('CORS error, fallback demo mode');
-                showNotification('⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้ (CORS Error) กำลังใช้โหมดทดสอบ', 'warning');
-            } else {
-                console.warn('Fallback demo mode:', error.message);
-                showNotification('ไม่สามารถเชื่อมต่อ Google Sheets ได้ กำลังใช้โหมดทดสอบ', 'warning');
-            }
-            
-            const user = findDemoUser(userCode, password);
-            
-            if (user) return user; else return null;
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('Failed to parse login response as JSON:', responseText.substring(0, 200));
+            throw new Error('Server ตอบกลับข้อมูลผิดรูปแบบ กรุณาลองใหม่');
         }
+        
+        console.log('Login response:', data);
+
+        if (!data.success) {
+            // เช่น รหัสผ่านไม่ถูกต้อง หรือ user ไม่มีอยู่
+            throw new Error(data.error || 'รหัสผ่านไม่ถูกต้อง');
+        }
+
+        // ✅ Server ตรวจสอบแล้ว — รับเฉพาะ user object (ไม่มี password)
+        return data.user;
+
+    } catch (error) {
+        // ❗ Production mode: ไม่ fallback ไป demo — แสดง error จริงแทน
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            throw new Error('ไม่สามารถเชื่อมต่อ Server ได้ กรุณาตรวจสอบเน็ตเวิร์ค หรือติดต่อ IT');
+        }
+        throw error;
     }
+    }
+
+    // Demo Mode (ไม่มี webAppUrl) — ใช้ DEMO_USERS
+    const user = findDemoUser(userCode, password);
+    return user || null;
 }
 function logout() {
     currentUser = null;
@@ -268,23 +328,44 @@ function logout() {
 }
 
 let drugListData = [];
+let drugSyncTimer = null;
 
 // Load configuration from localStorage
 function loadConfig() {
     const savedConfig = localStorage.getItem('predisConfig');
     if (savedConfig) {
         googleSheetsConfig = JSON.parse(savedConfig);
-        document.getElementById('apiKey').value = googleSheetsConfig.apiKey;
-        document.getElementById('spreadsheetId').value = googleSheetsConfig.spreadsheetId;
-        document.getElementById('sheetName').value = googleSheetsConfig.sheetName;
-        document.getElementById('userSheetName').value = googleSheetsConfig.userSheetName || 'Users';
-        document.getElementById('webAppUrl').value = googleSheetsConfig.webAppUrl || '';
-        
-        // Set drug sheet name
-        if (!googleSheetsConfig.drugSheetName) {
-            googleSheetsConfig.drugSheetName = 'Drug_List';
-        }
-        document.getElementById('drugSheetName').value = googleSheetsConfig.drugSheetName;
+        googleSheetsConfig.webAppUrl = normalizeWebAppUrl(googleSheetsConfig.webAppUrl);
+        googleSheetsConfig.sheetName = googleSheetsConfig.sheetName || 'Predispensing_Errors';
+        googleSheetsConfig.userSheetName = googleSheetsConfig.userSheetName || 'Users';
+        googleSheetsConfig.drugSheetName = googleSheetsConfig.drugSheetName || 'Drug_List';
+        googleSheetsConfig.externalDrugSourceUrl = googleSheetsConfig.externalDrugSourceUrl || '';
+        googleSheetsConfig.externalDrugSourceToken = googleSheetsConfig.externalDrugSourceToken || '';
+        googleSheetsConfig.externalDrugSourceFormat = googleSheetsConfig.externalDrugSourceFormat || 'json';
+        googleSheetsConfig.externalDrugDataPath = googleSheetsConfig.externalDrugDataPath || '';
+        googleSheetsConfig.externalDrugAutoSyncMinutes = Number(googleSheetsConfig.externalDrugAutoSyncMinutes || 0);
+
+        const setInputValue = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.value = value;
+        };
+
+        setInputValue('apiKey', googleSheetsConfig.apiKey || '');
+        setInputValue('spreadsheetId', googleSheetsConfig.spreadsheetId || '');
+        setInputValue('sheetName', googleSheetsConfig.sheetName);
+        setInputValue('userSheetName', googleSheetsConfig.userSheetName);
+        setInputValue('drugSheetName', googleSheetsConfig.drugSheetName);
+        setInputValue('webAppUrl', googleSheetsConfig.webAppUrl || '');
+        setInputValue('externalDrugSourceUrl', googleSheetsConfig.externalDrugSourceUrl);
+        setInputValue('externalDrugSourceToken', googleSheetsConfig.externalDrugSourceToken);
+        setInputValue('externalDrugSourceFormat', googleSheetsConfig.externalDrugSourceFormat);
+        setInputValue('externalDrugDataPath', googleSheetsConfig.externalDrugDataPath);
+        setInputValue('externalDrugAutoSyncMinutes', googleSheetsConfig.externalDrugAutoSyncMinutes);
+
+        saveConfig();
+        updateExternalSyncStatus();
+    } else {
+        googleSheetsConfig.webAppUrl = LATEST_WEB_APP_URL;
     }
 }
 
@@ -299,7 +380,7 @@ function showNotification(message, type = 'info') {
     notification.textContent = message;
     notification.className = `notification ${type}`;
     notification.classList.add('show');
-    
+
     setTimeout(() => {
         notification.classList.remove('show');
     }, 4000);
@@ -307,60 +388,72 @@ function showNotification(message, type = 'info') {
 
 // Navigation functions
 function showSection(sectionName) {
-    // Hide all sections
-    document.querySelectorAll('.section').forEach(section => {
-        section.classList.remove('active');
-    });
-    
-    // Remove active class from all nav buttons
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Show selected section
-    document.getElementById(sectionName).classList.add('active');
-    
-    // Add active class to clicked nav button
-    event.target.classList.add('active');
-    
-    // Update reporter field when showing form section
-    if (sectionName === 'form') {
-        console.log('Showing form section, updating reporter field');
-        setTimeout(() => updateReporterField(), 100);
+    // If the section doesn't exist on this page, navigate to the correct page
+    const targetSection = document.getElementById(sectionName);
+    if (!targetSection) {
+        navigateTo(null, sectionName);
+        return;
     }
-    
-    // Load specific section data
-    if (sectionName === 'druglist') {
+
+    document.querySelectorAll('.section').forEach(section =>
+        section.classList.remove('active')
+    );
+    document.querySelectorAll('.nav-btn').forEach(btn =>
+        btn.classList.remove('active')
+    );
+
+    if (targetSection) targetSection.classList.add('active');
+
+    // เครื่องหมาย active หน้า nav ที่คลิก
+    try { event.target.classList.add('active'); } catch (_) { }
+
+    if (sectionName === 'form') {
+        setTimeout(() => updateReporterField(), 100);
+    } else if (sectionName === 'druglist') {
         loadDrugList();
     } else if (sectionName === 'dashboard') {
         loadData();
+    } else if (sectionName === 'settings') {
+        if (!hasRole('admin')) {
+            showNotification('เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเข้าถึงการตั้งค่า', 'warning');
+            // Redirect to previous section
+            const defaultSection = PAGE_SECTION_MAP[currentPage] || 'druglist';
+            const defaultEl = document.getElementById(defaultSection);
+            if (defaultEl) defaultEl.classList.add('active');
+            return;
+        }
+        // แสดง banner ถ้ายังไม่ได้ตั้งค่า webAppUrl
+        const banner = document.getElementById('setupGuideBanner');
+        if (banner) {
+            banner.style.display = (!googleSheetsConfig.webAppUrl || !googleSheetsConfig.webAppUrl.trim()) ? 'block' : 'none';
+        }
     }
 }
 
 // Initialize form with current date and generate report ID
 function initializeForm() {
     const now = new Date();
-    const pad = n => n.toString().padStart(2,'0');
-    const localDateTime = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const localDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-    
+    const pad = n => n.toString().padStart(2, '0');
+    const localDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
     const tsEl = document.getElementById('timestamp');
     const eventDateEl = document.getElementById('eventDate');
     if (tsEl) tsEl.value = localDateTime;
     if (eventDateEl) eventDateEl.value = localDate;
-    
+
     // Generate Report ID
     generateReportId();
-    
+
     // Populate process dropdown and setup error options
     populateProcessSelect();
-    
+
     // Load drug list for drug dropdowns
     loadDrugList();
-    
+
     // Add search functionality to drug input fields
     setupDrugSearchInputs();
-    
+
     // Set reporter name
     const reporterEl = document.getElementById('reporter');
     if (reporterEl && currentUser) {
@@ -408,54 +501,35 @@ const errorOptionsByProcess = {
 };
 
 function populateProcessSelect() {
-    console.log('=== populateProcessSelect called ===');
     const sel = document.getElementById('process');
-    console.log('Process select element found:', !!sel);
-    
-    if (!sel) {
-        console.error('Process select element not found');
-        return;
-    }
-    
+    if (!sel) return;
+
     const optionsHtml = '<option value="">เลือกกระบวนการ</option>' + PROCESS_OPTIONS
         .map(p => `<option value="${p}">${p}</option>`)
         .join('');
-    
+
     sel.innerHTML = optionsHtml;
-    console.log('Process options populated:', PROCESS_OPTIONS.length, 'options');
-    
-    // Add event listener for process change (only if not already added)
+
     if (!sel.dataset.listenerAdded) {
-        sel.addEventListener('change', function() {
-            console.log('Process changed to:', this.value);
+        sel.addEventListener('change', function () {
             updateErrorOptions(this.value);
         });
         sel.dataset.listenerAdded = 'true';
-        console.log('Process change listener added');
     }
 }
 
 // อัปเดตตัวเลือกข้อผิดพลาดตามกระบวนการที่เลือก
 function updateErrorOptions(selectedProcess) {
-    console.log('updateErrorOptions called with:', selectedProcess);
     const errorSelect = document.getElementById('errorDetail');
-    if (!errorSelect) {
-        console.log('errorDetail select not found');
-        return;
-    }
-    
-    // เคลียร์ตัวเลือกเดิม
+    if (!errorSelect) return;
+
     errorSelect.innerHTML = '<option value="">เลือกข้อผิดพลาด</option>';
-    
+
     if (selectedProcess && errorOptionsByProcess[selectedProcess]) {
-        // เพิ่มตัวเลือกข้อผิดพลาดตามกระบวนการ
         const options = errorOptionsByProcess[selectedProcess]
             .map(error => `<option value="${error}">${error}</option>`)
             .join('');
         errorSelect.innerHTML += options;
-        console.log(`Added ${errorOptionsByProcess[selectedProcess].length} error options for ${selectedProcess}`);
-    } else {
-        console.log('No error options found for process:', selectedProcess);
     }
 }
 
@@ -463,6 +537,9 @@ function updateErrorOptions(selectedProcess) {
 let usedReportIds = new Set();
 // Submission control
 let isSubmitting = false;
+// Pagination state
+let currentTablePage = 1;
+let cachedValidRows = [];
 // Generate idempotency submission token
 function generateSubmissionToken() {
     return 'SUB-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 10);
@@ -478,15 +555,15 @@ function generateReportId() {
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
     const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-    
+
     // Format: PE + YYMMDD + HHMMSS + XXX (milliseconds for uniqueness)
     let reportId = `PE${year}${month}${day}${hours}${minutes}${seconds}`;
-    
+
     // If this ID is already used, add milliseconds
     if (usedReportIds.has(reportId)) {
         reportId += milliseconds;
     }
-    
+
     // If still duplicate (very rare), add random number
     let counter = 1;
     const baseId = reportId;
@@ -494,15 +571,15 @@ function generateReportId() {
         reportId = baseId + String(counter).padStart(2, '0');
         counter++;
     }
-    
+
     // Store the used ID
     usedReportIds.add(reportId);
-    
+
     const reportIdEl = document.getElementById('reportId');
     if (reportIdEl) {
         reportIdEl.value = reportId;
     }
-    
+
     console.log('Generated unique Report ID:', reportId);
     return reportId;
 }
@@ -516,26 +593,25 @@ async function appendToGoogleSheet(data) {
             const formData = new FormData();
             formData.append('action', 'append');
             formData.append('sheetName', googleSheetsConfig.sheetName);
-            
+
             // Add each data field individually - ใช้ eventDate แทน timestamp
-            formData.append('eventDate', data.eventDate);
-            formData.append('reportId', data.reportId);
-            if (data.submissionToken) formData.append('submissionToken', data.submissionToken);
-            formData.append('shift', data.shift);
-            formData.append('errorType', data.errorType);
+            formData.append('eventDate', sanitizeForSheet(data.eventDate));
+            formData.append('reportId', sanitizeForSheet(data.reportId));
+            if (data.submissionToken) formData.append('submissionToken', sanitizeForSheet(data.submissionToken));
+            formData.append('shift', sanitizeForSheet(data.shift));
+            formData.append('errorType', sanitizeForSheet(data.errorType));
             let loc = data.location;
             if (loc === 'รพ.สต.' && data.substation) {
                 loc = `${loc}${data.substation}`;
             }
-            formData.append('location', loc);
-            formData.append('process', data.process);
-            formData.append('errorDetail', data.errorDetail);
-            formData.append('correctItem', data.correctItem);
-            formData.append('incorrectItem', data.incorrectItem);
-            formData.append('cause', data.cause);
-            formData.append('additionalDetails', data.additionalDetails || '');
-            formData.append('reporter', data.reporter);
-            if (data.submissionToken) formData.append('submissionToken', data.submissionToken);
+            formData.append('location', sanitizeForSheet(loc));
+            formData.append('process', sanitizeForSheet(data.process));
+            formData.append('errorDetail', sanitizeForSheet(data.errorDetail));
+            formData.append('correctItem', sanitizeForSheet(data.correctItem));
+            formData.append('incorrectItem', sanitizeForSheet(data.incorrectItem));
+            formData.append('cause', sanitizeForSheet(data.cause));
+            formData.append('additionalDetails', sanitizeForSheet(data.additionalDetails || ''));
+            formData.append('reporter', sanitizeForSheet(data.reporter));
 
             // Create a simple POST request without custom headers
             const response = await fetch(googleSheetsConfig.webAppUrl, {
@@ -559,12 +635,12 @@ async function appendToGoogleSheet(data) {
                             // สร้าง Report ID ใหม่และลองอีกครั้ง
                             console.log('Duplicate Report ID detected, generating new ID...');
                             data.reportId = generateReportId();
-                            
+
                             // ลองส่งอีกครั้งด้วย Report ID ใหม่
                             const retryFormData = new FormData();
                             retryFormData.append('action', 'append');
                             retryFormData.append('sheetName', googleSheetsConfig.sheetName);
-                            
+
                             // Add all data with new Report ID
                             retryFormData.append('eventDate', data.eventDate);
                             retryFormData.append('reportId', data.reportId);
@@ -583,22 +659,22 @@ async function appendToGoogleSheet(data) {
                             retryFormData.append('additionalDetails', data.additionalDetails || '');
                             retryFormData.append('reporter', data.reporter);
                             if (data.submissionToken) retryFormData.append('submissionToken', data.submissionToken);
-                            
+
                             const retryResponse = await fetch(googleSheetsConfig.webAppUrl, {
                                 method: 'POST',
                                 body: retryFormData,
                                 redirect: 'follow'
                             });
-                            
+
                             if (retryResponse.ok || retryResponse.redirected) {
                                 const retryResult = await retryResponse.json();
                                 if (retryResult.error) {
                                     throw new Error(retryResult.error);
                                 }
-                                return { 
-                                    success: true, 
+                                return {
+                                    success: true,
                                     message: 'บันทึกข้อมูลสำเร็จ (สร้าง Report ID ใหม่)',
-                                    newReportId: data.reportId 
+                                    newReportId: data.reportId
                                 };
                             } else {
                                 throw new Error('ไม่สามารถบันทึกข้อมูลได้แม้หลังจากสร้าง Report ID ใหม่');
@@ -614,15 +690,15 @@ async function appendToGoogleSheet(data) {
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
         } catch (error) {
             console.error('Web App error:', error);
-            
+
             // If it's a network error, try alternative approach
             if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
                 return await submitViaForm(data);
             }
-            
+
             throw new Error(`ไม่สามารถบันทึกข้อมูลผ่าน Web App ได้: ${error.message}`);
         }
     } else {
@@ -630,7 +706,7 @@ async function appendToGoogleSheet(data) {
         console.log('Demo Mode: บันทึกข้อมูลในโหมดทดสอบ', data);
         console.log('- วันที่เกิดเหตุการณ์:', data.eventDate);
         console.log('- เวลาบันทึกข้อมูล:', new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }));
-        
+
         // จำลองการตอบกลับจาก server
         const demoResponse = {
             status: 'success',
@@ -647,7 +723,7 @@ async function appendToGoogleSheet(data) {
                 second: '2-digit'
             })
         };
-        
+
         showNotification(`✅ บันทึกข้อมูลสำเร็จ (โหมดทดสอบ)\n📅 วันที่เกิดเหตุ: ${data.eventDate}\n📝 Report ID: ${demoResponse.reportId}`, 'success');
         return demoResponse;
     }
@@ -702,8 +778,27 @@ async function submitViaForm(data) {
 }
 
 async function readFromGoogleSheet() {
+    // ลำดับ: (1) Web App GET ?action=getErrors, (2) Google Sheets API
+
+    // (1) ใช้ Web App endpoint (ไม่ต้องตั้ง API Key)
+    if (googleSheetsConfig.webAppUrl && googleSheetsConfig.webAppUrl.trim()) {
+        try {
+            const url = googleSheetsConfig.webAppUrl + '?action=getErrors';
+            const response = await fetch(url, { redirect: 'follow' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+            if (result.success && result.data) {
+                return result.data;
+            }
+            throw new Error(result.error || 'ไม่สามารถอ่านข้อมูลจาก Web App ได้');
+        } catch (webAppError) {
+            console.warn('Web App getErrors failed, trying API fallback:', webAppError.message);
+        }
+    }
+
+    // (2) Fallback: Google Sheets API
     if (!googleSheetsConfig.apiKey || !googleSheetsConfig.spreadsheetId) {
-        throw new Error('การตั้งค่า Google Sheets ไม่สมบูรณ์ กรุณาตั้งค่าในหน้าตั้งค่า');
+        throw new Error('กรุณาตั้งค่า Web App URL ในหน้าตั้งค่า');
     }
 
     const range = `${googleSheetsConfig.sheetName}!A:L`;
@@ -724,9 +819,10 @@ async function readFromGoogleSheet() {
 function populateDrugDropdowns() {
     const correctItemList = document.getElementById('correctItemList');
     const incorrectItemList = document.getElementById('incorrectItemList');
-    
+    if (!correctItemList || !incorrectItemList) return;
+
     console.log('populateDrugDropdowns called with drugListData:', drugListData?.length || 0, 'items');
-    
+
     // Clear existing options
     correctItemList.innerHTML = '';
     incorrectItemList.innerHTML = '';
@@ -735,30 +831,30 @@ function populateDrugDropdowns() {
         // Filter only active drugs (hide inactive ones)
         const activeDrugs = drugListData.filter(drug => drug.status === 'Active');
         console.log(`Showing only active drugs: ${activeDrugs.length} out of ${drugListData.length} total drugs`);
-        
+
         // Count for information
         const inactiveDrugs = drugListData.filter(drug => drug.status === 'Inactive');
         console.log(`Status breakdown: Active: ${activeDrugs.length}, Inactive (hidden): ${inactiveDrugs.length}`);
-        
+
         activeDrugs.forEach(drug => {
             // No status indicator needed since all are active
-            const displayText = drug.drugName ? 
-                `${drug.drugName} (${drug.drugCode})` : 
+            const displayText = drug.drugName ?
+                `${drug.drugName} (${drug.drugCode})` :
                 drug.drugCode;
-            
+
             console.log('Adding drug to datalist:', displayText);
-            
+
             // Add to correct item datalist
             const correctOption = document.createElement('option');
             correctOption.value = displayText;
             correctItemList.appendChild(correctOption);
-            
+
             // Add to incorrect item datalist
             const incorrectOption = document.createElement('option');
             incorrectOption.value = displayText;
             incorrectItemList.appendChild(incorrectOption);
         });
-        
+
         console.log(`Populated drug datalists with ${activeDrugs.length} active drugs only`);
     } else {
         console.warn('No drug list data available');
@@ -769,24 +865,25 @@ function populateDrugDropdowns() {
 function setupDrugSearchInputs() {
     const correctItemInput = document.getElementById('correctItem');
     const incorrectItemInput = document.getElementById('incorrectItem');
-    
-    // Add input event listeners for better UX
-    correctItemInput.addEventListener('input', function() {
-        validateDrugInput(this);
-    });
-    
-    incorrectItemInput.addEventListener('input', function() {
-        validateDrugInput(this);
-    });
-    
-    // Add focus event to show all options
-    correctItemInput.addEventListener('focus', function() {
-        this.setAttribute('list', 'correctItemList');
-    });
-    
-    incorrectItemInput.addEventListener('focus', function() {
-        this.setAttribute('list', 'incorrectItemList');
-    });
+    if (!correctItemInput || !incorrectItemInput) return;
+
+    // Prevent adding duplicate listeners
+    if (!correctItemInput.dataset.searchListenerAdded) {
+        correctItemInput.dataset.searchListenerAdded = 'true';
+
+        // Add input event listeners for better UX
+        correctItemInput.addEventListener('input', function () {
+            validateDrugInput(this);
+        });
+    }
+
+    if (!incorrectItemInput.dataset.searchListenerAdded) {
+        incorrectItemInput.dataset.searchListenerAdded = 'true';
+
+        incorrectItemInput.addEventListener('input', function () {
+            validateDrugInput(this);
+        });
+    }
 
     // Enhance inputs with searchable dropdowns (better UX than native datalist)
     try {
@@ -803,24 +900,24 @@ function validateDrugInput(input) {
         // Check only against active drugs
         const activeDrugs = drugListData.filter(drug => drug.status === 'Active');
         const foundDrug = activeDrugs.some(drug => {
-            const displayText = drug.drugName ? 
-                `${drug.drugName} (${drug.drugCode})` : 
+            const displayText = drug.drugName ?
+                `${drug.drugName} (${drug.drugCode})` :
                 drug.drugCode;
             return displayText === value;
         });
-        
+
         // Visual feedback for valid/invalid selection
         if (foundDrug) {
-            input.style.borderColor = '#28a745';
-            input.style.backgroundColor = '#f8fff9';
+            input.style.borderColor = '#059669';
+            input.style.backgroundColor = '#ECFDF5';
         } else {
-            input.style.borderColor = '#ffc107';
-            input.style.backgroundColor = '#fffdf0';
+            input.style.borderColor = '#D97706';
+            input.style.backgroundColor = '#FEF3C7';
         }
     } else {
         // Reset to default style
-        input.style.borderColor = '#e0e0e0';
-        input.style.backgroundColor = '#ffffff';
+        input.style.borderColor = '#E5E7EB';
+        input.style.backgroundColor = '#FFFFFF';
     }
 }
 
@@ -865,9 +962,22 @@ function highlightMultipleMatches(text, query) {
 
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text === null || text === undefined) return '';
+    const str = String(text);
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+// Sanitize input to prevent formula injection in Google Sheets
+function sanitizeForSheet(value) {
+    if (value === null || value === undefined) return '';
+    let str = String(value).trim();
+    // Remove characters that could trigger formula injection
+    if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+    }
+    // Remove null bytes
+    str = str.replace(/\0/g, '');
+    return str;
 }
 
 // --- Searchable dropdown enhancement (replaces plain datalist UX) ---
@@ -876,20 +986,28 @@ function setupSearchableDropdowns() {
     const incorrectInput = document.getElementById('incorrectItem');
     if (!correctInput || !incorrectInput) return;
 
-    // Build options array from drugListData (active only)
-    const options = (drugListData || []).filter(d => d.status === 'Active').map(drug => {
-        return drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode;
-    });
+    // Pass a getter function so options always reflect latest drugListData
+    const getOptions = () => (drugListData || [])
+        .filter(d => d.status === 'Active')
+        .map(drug => drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode);
 
     // Initialize dropdown widgets
-    makeSearchable(correctInput, options);
-    makeSearchable(incorrectInput, options);
+    makeSearchable(correctInput, getOptions);
+    makeSearchable(incorrectInput, getOptions);
 }
 
-function makeSearchable(inputEl, options) {
-    // Avoid double-init
-    if (inputEl._searchableInit) return;
+function makeSearchable(inputEl, optionsOrGetter) {
+    // If already initialized, getter always provides fresh data
+    if (inputEl._searchableInit) {
+        return;
+    }
     inputEl._searchableInit = true;
+
+    // Support both static array and getter function
+    const getOptions = typeof optionsOrGetter === 'function' ? optionsOrGetter : () => optionsOrGetter;
+
+    // Remove native datalist binding to prevent double dropdown
+    inputEl.removeAttribute('list');
 
     // Create container
     const container = document.createElement('div');
@@ -940,7 +1058,7 @@ function makeSearchable(inputEl, options) {
                 }, 10);
             }
 
-            item.addEventListener('mousedown', function(e) {
+            item.addEventListener('mousedown', function (e) {
                 e.preventDefault(); // prevent blur
                 selectIndex(i);
                 hideList();
@@ -948,7 +1066,7 @@ function makeSearchable(inputEl, options) {
             });
 
             // Update active index on mouse enter
-            item.addEventListener('mouseenter', function() {
+            item.addEventListener('mouseenter', function () {
                 activeIndex = i;
                 renderList();
             });
@@ -985,6 +1103,7 @@ function makeSearchable(inputEl, options) {
     }
 
     function updateFilter(value) {
+        const options = getOptions();
         const q = (value || '').toLowerCase().trim();
         if (!q) {
             // show top 30 options when empty
@@ -995,13 +1114,25 @@ function makeSearchable(inputEl, options) {
                 const optionLower = option.toLowerCase();
                 let score = 0;
 
+                // Extract drug code from "DrugName (DrugCode)" format
+                const codeMatch = option.match(/\(([^)]+)\)$/);
+                const drugCode = codeMatch ? codeMatch[1].toLowerCase() : '';
+
                 // Exact match (highest priority)
                 if (optionLower === q) {
                     score = 1000;
                 }
+                // Drug code exact match
+                else if (drugCode === q) {
+                    score = 900;
+                }
                 // Starts with query (very high priority)
                 else if (optionLower.startsWith(q)) {
                     score = 500;
+                }
+                // Drug code starts with query
+                else if (drugCode.startsWith(q)) {
+                    score = 450;
                 }
                 // Word boundary match (high priority)
                 else if (optionLower.includes(' ' + q) || optionLower.includes('(' + q)) {
@@ -1025,10 +1156,10 @@ function makeSearchable(inputEl, options) {
 
                 return { option, score };
             })
-            .filter(item => item !== null)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 30)
-            .map(item => item.option);
+                .filter(item => item !== null)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 30)
+                .map(item => item.option);
 
             filtered = scored;
         }
@@ -1048,21 +1179,28 @@ function makeSearchable(inputEl, options) {
         return queryIndex === query.length;
     }
 
-    inputEl.addEventListener('input', function() {
-        updateFilter(this.value);
-        validateDrugInput(this);
+    // Debounce timer for search performance
+    let debounceTimer = null;
+
+    inputEl.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const self = this;
+        debounceTimer = setTimeout(() => {
+            updateFilter(self.value);
+            validateDrugInput(self);
+        }, 150);
     });
 
-    inputEl.addEventListener('focus', function() {
+    inputEl.addEventListener('focus', function () {
         updateFilter(this.value);
     });
 
-    inputEl.addEventListener('blur', function() {
+    inputEl.addEventListener('blur', function () {
         // small timeout to allow mousedown selection
         setTimeout(() => hideList(), 150);
     });
 
-    inputEl.addEventListener('keydown', function(e) {
+    inputEl.addEventListener('keydown', function (e) {
         const key = e.key;
         const isListVisible = list.style.display !== 'none';
 
@@ -1110,6 +1248,10 @@ function makeSearchable(inputEl, options) {
 }
 
 
+// Client-side rate limiting for form submissions
+let lastSubmissionTime = 0;
+const MIN_SUBMISSION_INTERVAL_MS = 5000; // 5 seconds between submissions
+
 // Form submission handler
 async function handleFormSubmit(event) {
     event.preventDefault();
@@ -1117,12 +1259,41 @@ async function handleFormSubmit(event) {
         console.warn('Duplicate submit prevented');
         return;
     }
+
+    // Rate limit check
+    const now = Date.now();
+    if (now - lastSubmissionTime < MIN_SUBMISSION_INTERVAL_MS) {
+        showNotification('กรุณารอสักครู่ก่อนส่งข้อมูลอีกครั้ง', 'warning');
+        return;
+    }
+
     isSubmitting = true;
+    lastSubmissionTime = now;
     const formData = new FormData(event.target);
     const errorData = Object.fromEntries(formData.entries());
+
+    // Validate correctItem against drug list
+    if (errorData.correctItem && drugListData && drugListData.length > 0) {
+        const activeDrugs = drugListData.filter(d => d.status === 'Active');
+        const isValid = activeDrugs.some(drug => {
+            const displayText = drug.drugName ? `${drug.drugName} (${drug.drugCode})` : drug.drugCode;
+            return displayText === errorData.correctItem;
+        });
+        if (!isValid) {
+            showNotification('กรุณาเลือกรายการยาที่ถูกต้องจากรายการ', 'warning');
+            const correctInput = document.getElementById('correctItem');
+            if (correctInput) {
+                correctInput.focus();
+                correctInput.style.borderColor = '#DC2626';
+            }
+            isSubmitting = false;
+            return;
+        }
+    }
+
     // Add idempotency submission token
     errorData.submissionToken = generateSubmissionToken();
-    
+
     // ตรวจสอบและเพิ่มข้อมูล HAD อัตโนมัติ
     const hadInfo = await checkAndRecordHAD(errorData);
     if (hadInfo) {
@@ -1130,7 +1301,7 @@ async function handleFormSubmit(event) {
         errorData.hadDrugName = hadInfo.hadDrugs.join(', ');
         errorData.hadRiskLevel = hadInfo.riskLevel;
     }
-    
+
     // ใช้ eventDate ที่ผู้ใช้เลือก (ไม่ต้องรวมเวลา)
     if (errorData.eventDate) {
         // ไม่ต้องเพิ่มเวลาปัจจุบัน ใช้แค่วันที่เกิดเหตุการณ์
@@ -1138,18 +1309,18 @@ async function handleFormSubmit(event) {
         // ลบ timestamp field ออก
         delete errorData.timestamp;
     }
-    
+
     // Include substation if present
     const subEl = document.getElementById('substation');
     if (subEl && subEl.value) {
         errorData.substation = subEl.value;
     }
-    
+
     // Generate a new Report ID if not already set
     if (!errorData.reportId) {
         errorData.reportId = generateReportId();
     }
-    
+
     try {
         // Show loading state
         const submitBtn = event.target.querySelector('.submit-btn');
@@ -1158,7 +1329,7 @@ async function handleFormSubmit(event) {
         submitBtn.disabled = true;
 
         const result = await appendToGoogleSheet(errorData);
-        
+
         // แสดงการแจ้งเตือนพร้อม Report ID ที่ใช้
         let successMessage = 'บันทึกข้อผิดพลาดเรียบร้อยแล้ว!';
         if (result && result.newReportId) {
@@ -1166,11 +1337,11 @@ async function handleFormSubmit(event) {
         } else {
             successMessage = `บันทึกข้อผิดพลาดเรียบร้อยแล้ว!\n📝 Report ID: ${errorData.reportId}`;
         }
-        
+
         showNotification(successMessage, 'success');
         event.target.reset();
         initializeForm();
-        
+
     } catch (error) {
         console.error('Error submitting form:', error);
         showNotification(error.message, 'error');
@@ -1179,7 +1350,7 @@ async function handleFormSubmit(event) {
         const submitBtn = event.target.querySelector('.submit-btn');
         submitBtn.innerHTML = '<i class="fas fa-save"></i> บันทึก';
         submitBtn.disabled = false;
-    isSubmitting = false;
+        isSubmitting = false;
     }
 }
 
@@ -1191,14 +1362,14 @@ async function checkAndRecordHAD(errorData) {
             hadDrugs: [],
             riskLevel: 'Regular'
         };
-        
+
         // ดึงรายการยาที่เกี่ยวข้องจากฟิลด์ต่างๆ
         const drugFields = [
             errorData.correctItem,
             errorData.incorrectItem,
             errorData.errorDetail
         ];
-        
+
         // ตรวจสอบแต่ละฟิลด์ว่ามียา HAD หรือไม่
         for (const field of drugFields) {
             if (field) {
@@ -1210,21 +1381,21 @@ async function checkAndRecordHAD(errorData) {
                 }
             }
         }
-        
+
         // ลบรายการซ้ำ
         hadInfo.hadDrugs = [...new Set(hadInfo.hadDrugs)];
-        
+
         // แสดงผลใน UI
         updateHADDisplay(hadInfo);
-        
+
         // แสดงการแจ้งเตือนถ้าพบ HAD
         if (hadInfo.isHAD) {
             showNotification(`⚠️ ตรวจพบ High Alert Drugs: ${hadInfo.hadDrugs.join(', ')}`, 'warning');
             console.log('HAD Detected:', hadInfo);
         }
-        
+
         return hadInfo;
-        
+
     } catch (error) {
         console.error('Error checking HAD:', error);
         console.log('GlobalDrugList sample:', globalDrugList.slice(0, 3));
@@ -1237,8 +1408,8 @@ async function checkAndRecordHAD(errorData) {
 function updateHADDisplay(hadInfo) {
     const hadSection = document.querySelector('.had-section');
     const hadDrugsList = document.getElementById('hadDrugsList');
-    const hadRiskLevel = document.getElementById('hadRiskLevel');
-    if (!hadSection || !hadDrugsList || !hadRiskLevel) {
+    const hadRiskDisplay = document.getElementById('hadRiskLevelDisplay');
+    if (!hadSection || !hadDrugsList || !hadRiskDisplay) {
         console.warn('HAD UI elements not found');
     }
     // อัปเดต hidden fields (ตรวจสอบก่อน)
@@ -1248,20 +1419,20 @@ function updateHADDisplay(hadInfo) {
     if (hadDrugNameEl) hadDrugNameEl.value = hadInfo.hadDrugs.join(', ');
     const hadRiskInput = document.querySelector('input[name="hadRiskLevel"]');
     if (hadRiskInput) hadRiskInput.value = hadInfo.riskLevel;
-    
-    if (hadSection && hadDrugsList && hadRiskLevel && hadInfo.isHAD && hadInfo.hadDrugs.length > 0) {
+
+    if (hadSection && hadDrugsList && hadRiskDisplay && hadInfo.isHAD && hadInfo.hadDrugs.length > 0) {
         // แสดง HAD section
         hadSection.style.display = 'block';
-        
+
         // แสดงรายการยา HAD
         hadDrugsList.innerHTML = hadInfo.hadDrugs
-            .map(drug => `<span class="had-drug-item">${drug}</span>`)
+            .map(drug => `<span class="had-drug-item">${escapeHtml(drug)}</span>`)
             .join('');
-        
+
         // อัปเดตระดับความเสี่ยง
-        hadRiskLevel.textContent = hadInfo.riskLevel === 'High' ? 'สูง' : 'ปกติ';
-        hadRiskLevel.className = `risk-badge ${hadInfo.riskLevel === 'High' ? 'risk-high' : 'risk-regular'}`;
-        
+        hadRiskDisplay.textContent = hadInfo.riskLevel === 'High' ? 'สูง' : 'ปกติ';
+        hadRiskDisplay.className = `risk-badge ${hadInfo.riskLevel === 'High' ? 'risk-high' : 'risk-regular'}`;
+
     } else if (hadSection && hadDrugsList) {
         hadSection.style.display = 'none';
         hadDrugsList.innerHTML = '';
@@ -1271,28 +1442,28 @@ function updateHADDisplay(hadInfo) {
 // ค้นหา HAD ในข้อความ
 async function findHADInText(text) {
     if (!text || !globalDrugList.length) return [];
-    
+
     const hadDrugsFound = [];
     const textLower = text.toLowerCase();
-    
+
     // ตรวจสอบกับรายการยา HAD ในฐานข้อมูล
     for (const drug of globalDrugList) {
         if (drug.had === 'High') {
             // ตรวจสอบประเภทข้อมูลก่อนใช้ toLowerCase()
             const drugName = drug.drugName && typeof drug.drugName === 'string' ? drug.drugName : '';
             const drugCode = drug.drugCode && typeof drug.drugCode === 'string' ? drug.drugCode : '';
-            
+
             if (!drugName && !drugCode) continue; // ข้ามถ้าไม่มีข้อมูล
-            
+
             const drugNameLower = drugName.toLowerCase();
             const drugCodeLower = drugCode.toLowerCase();
-            
+
             // ตรวจสอบชื่อยาและรหัสยา
-            if ((drugNameLower && textLower.includes(drugNameLower)) || 
+            if ((drugNameLower && textLower.includes(drugNameLower)) ||
                 (drugCodeLower && textLower.includes(drugCodeLower))) {
                 hadDrugsFound.push(drugName || drugCode);
             }
-            
+
             // ตรวจสอบส่วนของชื่อยา (เช่น Insulin, Warfarin)
             if (drugNameLower) {
                 const mainDrugName = drugNameLower.split(' ')[0];
@@ -1302,7 +1473,7 @@ async function findHADInText(text) {
             }
         }
     }
-    
+
     return [...new Set(hadDrugsFound)]; // ลบรายการซ้ำ
 }
 
@@ -1311,13 +1482,13 @@ async function checkHADRealtime() {
     const correctItem = document.getElementById('correctItem')?.value || '';
     const incorrectItem = document.getElementById('incorrectItem')?.value || '';
     const errorDetail = document.getElementById('errorDetail')?.value || '';
-    
+
     const mockData = {
         correctItem,
-        incorrectItem, 
+        incorrectItem,
         errorDetail
     };
-    
+
     const hadInfo = await checkAndRecordHAD(mockData);
     return hadInfo;
 }
@@ -1325,7 +1496,7 @@ async function checkHADRealtime() {
 // Settings form handler
 function handleSettingsSubmit(event) {
     event.preventDefault();
-    
+
     const formData = new FormData(event.target);
     googleSheetsConfig = {
         apiKey: formData.get('apiKey'),
@@ -1333,10 +1504,17 @@ function handleSettingsSubmit(event) {
         sheetName: formData.get('sheetName') || 'Predispensing_Errors',
         userSheetName: formData.get('userSheetName') || 'Users',
         drugSheetName: formData.get('drugSheetName') || 'Drug_List',
-        webAppUrl: formData.get('webAppUrl') || ''
+        webAppUrl: formData.get('webAppUrl') || '',
+        externalDrugSourceUrl: formData.get('externalDrugSourceUrl') || '',
+        externalDrugSourceToken: formData.get('externalDrugSourceToken') || '',
+        externalDrugSourceFormat: formData.get('externalDrugSourceFormat') || 'json',
+        externalDrugDataPath: formData.get('externalDrugDataPath') || '',
+        externalDrugAutoSyncMinutes: Number(formData.get('externalDrugAutoSyncMinutes') || 0)
     };
-    
+
     saveConfig();
+    setupExternalDrugSyncTimer();
+    updateExternalSyncStatus();
     showNotification('บันทึกการตั้งค่าเรียบร้อยแล้ว!', 'success');
 }
 
@@ -1351,8 +1529,19 @@ async function loadData() {
             loadBtn.disabled = true;
         }
 
+        // Show skeleton loading in stat cards
+        document.querySelectorAll('#overviewStats .stat-number').forEach(el => {
+            el.innerHTML = '<div class="skeleton skeleton-number"></div>';
+        });
+        const tableBody = document.getElementById('errorTableBody');
+        if (tableBody) {
+            tableBody.innerHTML = Array.from({length: 5}, () =>
+                `<tr>${Array.from({length: 9}, () => '<td><div class="skeleton skeleton-text"></div></td>').join('')}</tr>`
+            ).join('');
+        }
+
         const data = await readFromGoogleSheet();
-        
+
         if (data.length === 0) {
             showNotification('ไม่พบข้อมูลใน Google Sheets', 'info');
             return;
@@ -1361,17 +1550,18 @@ async function loadData() {
         // Skip header row if it exists
         const hasHeader = data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('timestamp');
         const errorData = hasHeader ? data.slice(1) : data;
-        
+
         // เก็บ Report IDs ที่มีอยู่แล้วเพื่อป้องกันการซ้ำ
         loadExistingReportIds(data);
-        
+
         // Apply user-based filtering
         const filteredData = applyUserFilter(errorData);
-    lastUserFilteredData = filteredData.slice();
-        
+        lastUserFilteredData = filteredData.slice();
+
         updateDashboard(errorData, filteredData);
+        currentTablePage = 1;
         populateTable(filteredData);
-        
+
         // Initialize analytics filter UI once
         if (!window._analyticsFilterUIInitialized) {
             initAnalyticsFilterUI();
@@ -1380,12 +1570,12 @@ async function loadData() {
 
         // Generate advanced analytics (respect analytics filters)
         refreshAdvancedAnalytics();
-        
+
         // Update dashboard user info
         updateDashboardUserInfo();
-        
+
         showNotification('โหลดข้อมูลเรียบร้อยแล้ว!', 'success');
-        
+
     } catch (error) {
         console.error('Error loading data:', error);
         showNotification(error.message, 'error');
@@ -1401,18 +1591,18 @@ async function loadData() {
 // Load existing Report IDs to prevent duplicates
 function loadExistingReportIds(data) {
     usedReportIds.clear(); // เคลียร์ก่อน
-    
+
     if (Array.isArray(data) && data.length > 0) {
         data.forEach((row, index) => {
             // Skip header row
             if (index === 0 || !Array.isArray(row)) return;
-            
+
             const reportId = row[1]; // คอลัมน์ B = Report ID
             if (reportId && typeof reportId === 'string') {
                 usedReportIds.add(reportId);
             }
         });
-        
+
         console.log(`Loaded ${usedReportIds.size} existing Report IDs for duplicate prevention`);
     }
 }
@@ -1424,18 +1614,18 @@ function applyUserFilter(data) {
     const filterPeriodEl = document.getElementById('filterPeriod');
     const filterUser = filterUserEl ? filterUserEl.value : '';
     const filterPeriod = filterPeriodEl ? filterPeriodEl.value : '';
-    
+
     let filteredData = data;
-    
+
     // Apply user filter
     if (filterUser === 'currentUser') {
         // Show only current user's reports
         filteredData = filteredData.filter(row => {
             const reporter = (row[11] || '').toString().trim(); // ผู้รายงาน in column 11
-            return reporter === currentUser.name || 
-                   reporter.includes(currentUser.name) ||
-                   reporter === currentUser.psCode ||
-                   reporter === currentUser.id13;
+            return reporter === currentUser.name ||
+                reporter.includes(currentUser.name) ||
+                reporter === currentUser.psCode ||
+                reporter === currentUser.id13;
         });
     } else if (filterUser === 'myGroup') {
         // Show only reports from user's group
@@ -1443,17 +1633,17 @@ function applyUserFilter(data) {
             const reporter = (row[11] || '').toString().trim();
             // This would need a lookup to user database to check group
             // For now, assume reporter name contains group info or use a simplified approach
-            return reporter.includes(currentUser.group) || 
-                   reporter === currentUser.name ||
-                   (currentUser.level === 'admin'); // Admin can see all
+            return reporter.includes(currentUser.group) ||
+                reporter === currentUser.name ||
+                (currentUser.level === 'admin'); // Admin can see all
         });
     }
-    
+
     // Apply period filter
     if (filterPeriod) {
         const now = new Date();
         let startDate;
-        
+
         switch (filterPeriod) {
             case 'today':
                 startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1468,7 +1658,7 @@ function applyUserFilter(data) {
                 startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
                 break;
         }
-        
+
         if (startDate) {
             filteredData = filteredData.filter(row => {
                 try {
@@ -1480,7 +1670,7 @@ function applyUserFilter(data) {
             });
         }
     }
-    
+
     return filteredData;
 }
 
@@ -1507,7 +1697,7 @@ function applyAnalyticsFiltersToData(baseData) {
             if (!row[0]) return false;
             // Filter by error type
             if (analyticsFilters.errorType !== 'all') {
-                const et = (row[3]||'').toString().trim();
+                const et = (row[3] || '').toString().trim();
                 if (et !== analyticsFilters.errorType) return false;
             }
             // Filter by period
@@ -1515,7 +1705,7 @@ function applyAnalyticsFiltersToData(baseData) {
                 const d = new Date(row[0]);
                 if (isNaN(d)) return false;
                 const y = d.getFullYear();
-                const m = (d.getMonth()+1).toString().padStart(2,'0');
+                const m = (d.getMonth() + 1).toString().padStart(2, '0');
                 if (analyticsFilters.periodMode === 'year') {
                     if (!analyticsFilters.year || y.toString() !== analyticsFilters.year.toString()) return false;
                 } else if (analyticsFilters.periodMode === 'month') {
@@ -1532,11 +1722,6 @@ function refreshAdvancedAnalytics() {
     const filteredForAnalytics = applyAnalyticsFiltersToData(lastUserFilteredData);
     generateAdvancedAnalytics(filteredForAnalytics);
     updateAnalyticsFilterSummary();
-    
-    // Also refresh all charts with process filters
-    generateCauseChartByProcess();
-    generateErrorChartByProcess();
-    generateDrugChartByProcess();
 }
 
 function updateAnalyticsFilterSummary() {
@@ -1569,33 +1754,33 @@ function initAnalyticsFilterUI() {
     // Populate years from data (after data load we'll call populate)
     function populateYears() {
         if (!yearSel) return;
-        const dates = (lastUserFilteredData||[]).map(r=>r[0]).filter(Boolean);
-        const years = Array.from(new Set(dates.map(d=>{ const dd=new Date(d); if(!isNaN(dd)) return dd.getFullYear(); }).filter(Boolean))).sort();
-        yearSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
-        if (!analyticsFilters.year && years.length>0) analyticsFilters.year = years[years.length-1];
+        const dates = (lastUserFilteredData || []).map(r => r[0]).filter(Boolean);
+        const years = Array.from(new Set(dates.map(d => { const dd = new Date(d); if (!isNaN(dd)) return dd.getFullYear(); }).filter(Boolean))).sort();
+        yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+        if (!analyticsFilters.year && years.length > 0) analyticsFilters.year = years[years.length - 1];
         if (analyticsFilters.year) yearSel.value = analyticsFilters.year;
     }
 
     if (modeSel) {
-        modeSel.addEventListener('change', ()=>{
+        modeSel.addEventListener('change', () => {
             analyticsFilters.periodMode = modeSel.value;
             if (analyticsFilters.periodMode === 'year') {
-                yearWrap.style.display='flex';
-                monthWrap.style.display='none';
+                yearWrap.style.display = 'flex';
+                monthWrap.style.display = 'none';
                 populateYears();
             } else if (analyticsFilters.periodMode === 'month') {
-                yearWrap.style.display='flex';
-                monthWrap.style.display='flex';
+                yearWrap.style.display = 'flex';
+                monthWrap.style.display = 'flex';
                 populateYears();
             } else {
-                yearWrap.style.display='none';
-                monthWrap.style.display='none';
+                yearWrap.style.display = 'none';
+                monthWrap.style.display = 'none';
             }
         });
     }
-    if (etSel) etSel.addEventListener('change', ()=>{ analyticsFilters.errorType = etSel.value; });
-    if (processSel) processSel.addEventListener('change', ()=>{ 
-        analyticsFilters.process = processSel.value; 
+    if (etSel) etSel.addEventListener('change', () => { analyticsFilters.errorType = etSel.value; });
+    if (processSel) processSel.addEventListener('change', () => {
+        analyticsFilters.process = processSel.value;
         processFilter = processSel.value;  // Sync with global processFilter
         errorProcessFilter = processSel.value;  // Sync with error process filter
         drugProcessFilter = processSel.value;  // Sync with drug process filter
@@ -1607,17 +1792,17 @@ function initAnalyticsFilterUI() {
         if (errorProcessFilterEl) errorProcessFilterEl.value = processSel.value;
         if (drugProcessFilterEl) drugProcessFilterEl.value = processSel.value;
     });
-    if (yearSel) yearSel.addEventListener('change', ()=>{ analyticsFilters.year = yearSel.value; });
-    if (monthSel) monthSel.addEventListener('change', ()=>{ analyticsFilters.month = monthSel.value; });
+    if (yearSel) yearSel.addEventListener('change', () => { analyticsFilters.year = yearSel.value; });
+    if (monthSel) monthSel.addEventListener('change', () => { analyticsFilters.month = monthSel.value; });
     if (applyBtn) applyBtn.addEventListener('click', refreshAdvancedAnalytics);
-    if (resetBtn) resetBtn.addEventListener('click', ()=>{
-        analyticsFilters = { errorType:'all', periodMode:'all', year:null, month:null, process:'all' };
+    if (resetBtn) resetBtn.addEventListener('click', () => {
+        analyticsFilters = { errorType: 'all', periodMode: 'all', year: null, month: null, process: 'all' };
         processFilter = 'all'; // Reset global processFilter
         errorProcessFilter = 'all'; // Reset error process filter
         drugProcessFilter = 'all'; // Reset drug process filter
-        if (etSel) etSel.value='all';
-        if (processSel) processSel.value='all';
-        if (modeSel) modeSel.value='all';
+        if (etSel) etSel.value = 'all';
+        if (processSel) processSel.value = 'all';
+        if (modeSel) modeSel.value = 'all';
         // Also reset the dropdowns in all cards
         const causeProcessFilter = document.getElementById('processFilter');
         const errorProcessFilterEl = document.getElementById('errorProcessFilter');
@@ -1625,8 +1810,8 @@ function initAnalyticsFilterUI() {
         if (causeProcessFilter) causeProcessFilter.value = 'all';
         if (errorProcessFilterEl) errorProcessFilterEl.value = 'all';
         if (drugProcessFilterEl) drugProcessFilterEl.value = 'all';
-        yearWrap.style.display='none';
-        monthWrap.style.display='none';
+        yearWrap.style.display = 'none';
+        monthWrap.style.display = 'none';
         refreshAdvancedAnalytics();
     });
     updateAnalyticsFilterSummary();
@@ -1634,7 +1819,7 @@ function initAnalyticsFilterUI() {
 
 function updateDashboard(allData, filteredData) {
     console.log('Updating dashboard with all data:', allData?.length, 'filtered:', filteredData?.length);
-    
+
     if (!allData || allData.length === 0) {
         document.getElementById('totalErrors').textContent = '0';
         document.getElementById('myErrors').textContent = '0';
@@ -1648,49 +1833,71 @@ function updateDashboard(allData, filteredData) {
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
     const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const todayStart = new Date(thisYear, thisMonth, now.getDate());
+    const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+    const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
 
     let totalCount = 0;
     let myCount = 0;
     let groupCount = 0;
     let monthlyCount = 0;
     let weeklyCount = 0;
+    let todayCount = 0;
+    let sevenDayCount = 0;
+    let thisMonthTrend = 0;
+    let lastMonthTrend = 0;
 
     // Process all data for total counts
     allData.forEach((row, index) => {
         if (index === 0 || !row[0] || !row[1]) return;
-        
+
         try {
             const errorDate = new Date(row[0]);
             const reporter = (row[11] || '').toString().trim();
-            
+
             if (!isNaN(errorDate.getTime())) {
                 totalCount++;
-                
+
                 // Count user's own reports
                 if (currentUser && (
-                    reporter === currentUser.name || 
+                    reporter === currentUser.name ||
                     reporter.includes(currentUser.name) ||
                     reporter === currentUser.psCode ||
                     reporter === currentUser.id13)) {
                     myCount++;
                 }
-                
+
                 // Count group reports (simplified - could be enhanced with user database lookup)
                 if (currentUser && (
-                    reporter.includes(currentUser.group) || 
+                    reporter.includes(currentUser.group) ||
                     reporter === currentUser.name ||
                     currentUser.level === 'admin')) {
                     groupCount++;
                 }
-                
-                // Monthly count (from filtered data)
-                if (errorDate.getMonth() === thisMonth && errorDate.getFullYear() === thisYear) {
+
+                const rowMonth = errorDate.getMonth();
+                const rowYear = errorDate.getFullYear();
+
+                // Monthly count
+                if (rowMonth === thisMonth && rowYear === thisYear) {
                     monthlyCount++;
+                    thisMonthTrend++;
                 }
-                
-                // Weekly count (from filtered data)
+
+                // Last month count (for trend)
+                if (rowMonth === lastMonth && rowYear === lastMonthYear) {
+                    lastMonthTrend++;
+                }
+
+                // Weekly / 7-day count
                 if (errorDate >= lastWeek) {
                     weeklyCount++;
+                    sevenDayCount++;
+                }
+
+                // Today count
+                if (errorDate >= todayStart) {
+                    todayCount++;
                 }
             }
         } catch (e) {
@@ -1698,23 +1905,19 @@ function updateDashboard(allData, filteredData) {
         }
     });
 
-    // Apply filter-specific counts for monthly and weekly (use filtered data)
+    // Apply filter-specific counts for monthly (use filtered data)
     if (filteredData && filteredData !== allData) {
         monthlyCount = 0;
-        weeklyCount = 0;
-        
+
         filteredData.forEach((row, index) => {
             if (index === 0 || !row[0] || !row[1]) return;
-            
+
             try {
                 const errorDate = new Date(row[0]);
-                
+
                 if (!isNaN(errorDate.getTime())) {
                     if (errorDate.getMonth() === thisMonth && errorDate.getFullYear() === thisYear) {
                         monthlyCount++;
-                    }
-                    if (errorDate >= lastWeek) {
-                        weeklyCount++;
                     }
                 }
             } catch (e) {
@@ -1727,19 +1930,6 @@ function updateDashboard(allData, filteredData) {
     const legacyTotal = document.getElementById('totalErrors');
     if (legacyTotal) legacyTotal.textContent = totalCount;
 
-    // New Overview Section IDs
-    const todayCount = allData.filter(row => {
-        try {
-            const d = new Date(row[0]);
-            const nowDate = new Date();
-            return d.getFullYear() === nowDate.getFullYear() && d.getMonth() === nowDate.getMonth() && d.getDate() === nowDate.getDate();
-        } catch { return false; }
-    }).length;
-
-    const sevenDayCount = allData.filter(row => {
-        try { return new Date(row[0]) >= lastWeek; } catch { return false; }
-    }).length;
-
     var elAllTime = document.getElementById('totalAllTime'); if (elAllTime) elAllTime.textContent = totalCount;
     var elMonth = document.getElementById('totalMonth'); if (elMonth) elMonth.textContent = monthlyCount;
     var elWeek = document.getElementById('totalWeek'); if (elWeek) elWeek.textContent = sevenDayCount;
@@ -1748,48 +1938,51 @@ function updateDashboard(allData, filteredData) {
     // Per-user breakdown (Section 2)
     buildUserBreakdownTable(allData);
 
-    // Trend indicator (reuse existing)
-    updateTrendIndicator(allData, thisMonth, thisYear);
+    // Monthly report by year (Section 2.5)
+    buildMonthlyReportByYear(allData);
+
+    // Trend indicator (using pre-computed counts from single pass)
+    updateTrendIndicator(null, thisMonth, thisYear, thisMonthTrend, lastMonthTrend);
 }
 
 // Calculate trend indicator
-function updateTrendIndicator(allData, thisMonth, thisYear) {
+function updateTrendIndicator(allData, thisMonth, thisYear, precomputedThis, precomputedLast) {
     const trendEl = document.getElementById('trendIndicator');
     if (!trendEl) return;
 
     try {
-        let thisMonthCount = 0;
-        let lastMonthCount = 0;
-        
-        const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-        const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
+        let thisMonthCount, lastMonthCount;
 
-        allData.forEach(row => {
-            if (!row[0] || !row[1]) return;
-            
-            try {
-                const errorDate = new Date(row[0]);
-                if (isNaN(errorDate.getTime())) return;
-                
-                const month = errorDate.getMonth();
-                const year = errorDate.getFullYear();
-                
-                if (month === thisMonth && year === thisYear) {
-                    thisMonthCount++;
-                } else if (month === lastMonth && year === lastMonthYear) {
-                    lastMonthCount++;
-                }
-            } catch (e) {
-                // Skip invalid dates
-            }
-        });
+        if (precomputedThis !== undefined && precomputedLast !== undefined) {
+            // Use pre-computed counts (avoid extra iteration)
+            thisMonthCount = precomputedThis;
+            lastMonthCount = precomputedLast;
+        } else {
+            // Fallback: compute from data
+            thisMonthCount = 0;
+            lastMonthCount = 0;
+            const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+            const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
+
+            (allData || []).forEach(row => {
+                if (!row[0] || !row[1]) return;
+                try {
+                    const errorDate = new Date(row[0]);
+                    if (isNaN(errorDate.getTime())) return;
+                    const month = errorDate.getMonth();
+                    const year = errorDate.getFullYear();
+                    if (month === thisMonth && year === thisYear) thisMonthCount++;
+                    else if (month === lastMonth && year === lastMonthYear) lastMonthCount++;
+                } catch (e) { }
+            });
+        }
 
         if (lastMonthCount === 0) {
             trendEl.textContent = thisMonthCount > 0 ? '↗ ใหม่' : '-';
             trendEl.style.color = thisMonthCount > 0 ? '#ffc107' : '#6c757d';
         } else {
             const percentChange = ((thisMonthCount - lastMonthCount) / lastMonthCount * 100);
-            
+
             if (percentChange > 10) {
                 trendEl.textContent = `↗ +${percentChange.toFixed(0)}%`;
                 trendEl.style.color = '#dc3545';
@@ -1813,12 +2006,12 @@ function buildUserBreakdownTable(allData) {
     const tbody = document.getElementById('userBreakdownBody');
     if (!allData || allData.length === 0) {
         // Reset mini stats to 0 when no data
-        ['userToday','userWeek','userMonth','userAll'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='0'; });
+        ['userToday', 'userWeek', 'userMonth', 'userAll'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '0'; });
         if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">ไม่มีข้อมูล</td></tr>';
         return;
     }
     const now = new Date();
-    const lastWeek = new Date(now.getTime() - 7*24*60*60*1000);
+    const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
 
@@ -1826,7 +2019,7 @@ function buildUserBreakdownTable(allData) {
     allData.forEach((row, idx) => {
         if (!row || !row[0] || !row[11]) return; // require date + reporter
         const reporter = row[11];
-        if (!userStats[reporter]) userStats[reporter] = { today:0, week:0, month:0, all:0 };
+        if (!userStats[reporter]) userStats[reporter] = { today: 0, week: 0, month: 0, all: 0 };
         userStats[reporter].all++;
         let d;
         try { d = new Date(row[0]); } catch { return; }
@@ -1847,14 +2040,14 @@ function buildUserBreakdownTable(allData) {
         });
     }
     const rows = entries
-        .sort((a,b) => b[1].all - a[1].all)
-        .map(([name, s]) => `<tr><td>${name}</td><td>${s.today}</td><td>${s.week}</td><td>${s.month}</td><td>${s.all}</td></tr>`)
+        .sort((a, b) => b[1].all - a[1].all)
+        .map(([name, s]) => `<tr><td>${escapeHtml(name)}</td><td>${s.today}</td><td>${s.week}</td><td>${s.month}</td><td>${s.all}</td></tr>`)
         .join('');
     if (tbody) tbody.innerHTML = rows || '<tr><td colspan="5" style="text-align:center;">ไม่มีข้อมูล</td></tr>';
 
     // Update mini stats for current user if exactly one row (filtered) or find current user aggregate
     if (currentUser) {
-        const target = entries.find(([name]) => name.toLowerCase().includes((currentUser.name||'').toLowerCase()) || name.includes(currentUser.psCode||''));
+        const target = entries.find(([name]) => name.toLowerCase().includes((currentUser.name || '').toLowerCase()) || name.includes(currentUser.psCode || ''));
         if (target) {
             const stats = target[1];
             const elToday = document.getElementById('userToday'); if (elToday) elToday.textContent = stats.today;
@@ -1865,33 +2058,166 @@ function buildUserBreakdownTable(allData) {
     }
 }
 
+// ===== Monthly Report by Year (Section 2.5) =====
+let monthlyReportChart = null;
+let monthlyReportAllData = [];
+
+function buildMonthlyReportByYear(dataArg) {
+    // Store data for re-calls from dropdown change
+    if (dataArg) monthlyReportAllData = dataArg;
+    const allData = monthlyReportAllData;
+    if (!allData || allData.length === 0) return;
+
+    const yearSelect = document.getElementById('monthlyReportYear');
+    const scopeSelect = document.getElementById('monthlyReportUserScope');
+    const tbody = document.getElementById('monthlyReportBody');
+    if (!yearSelect || !tbody) return;
+
+    const showOnlyMe = scopeSelect ? scopeSelect.value === 'me' : true;
+
+    // Filter data to current user if scope = me
+    const filtered = allData.filter((row, idx) => {
+        if (idx === 0 || !row[0] || !row[1]) return false;
+        try {
+            const d = new Date(row[0]);
+            if (isNaN(d.getTime())) return false;
+        } catch { return false; }
+        if (showOnlyMe && currentUser) {
+            const reporter = (row[11] || '').toString().trim();
+            return reporter === currentUser.name ||
+                reporter.includes(currentUser.name) ||
+                reporter === currentUser.psCode ||
+                reporter === currentUser.id13;
+        }
+        return true;
+    });
+
+    // Collect available years
+    const yearSet = new Set();
+    filtered.forEach(row => {
+        try {
+            const y = new Date(row[0]).getFullYear();
+            if (!isNaN(y)) yearSet.add(y);
+        } catch {}
+    });
+    const years = Array.from(yearSet).sort((a, b) => b - a);
+
+    // Populate year dropdown (preserve selection)
+    const prevYear = yearSelect.value;
+    yearSelect.innerHTML = '';
+    years.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + (y + 543 ? ' (' + (y + 543) + ')' : '');
+        yearSelect.appendChild(opt);
+    });
+    if (years.length === 0) {
+        yearSelect.innerHTML = '<option value="">ไม่มีข้อมูล</option>';
+        tbody.innerHTML = '<tr><td colspan="14" class="text-center">ไม่มีข้อมูล</td></tr>';
+        return;
+    }
+    // Restore previous selection if still valid
+    if (prevYear && years.includes(parseInt(prevYear))) {
+        yearSelect.value = prevYear;
+    } else {
+        yearSelect.value = years[0];
+    }
+    const selectedYear = parseInt(yearSelect.value);
+
+    // Count per month for selected year
+    const monthlyCounts = new Array(12).fill(0);
+    filtered.forEach(row => {
+        try {
+            const d = new Date(row[0]);
+            if (d.getFullYear() === selectedYear) {
+                monthlyCounts[d.getMonth()]++;
+            }
+        } catch {}
+    });
+
+    const total = monthlyCounts.reduce((a, b) => a + b, 0);
+    const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    // Render table
+    let rowHtml = '<tr><td><strong>จำนวน</strong></td>';
+    monthlyCounts.forEach((count, i) => {
+        rowHtml += `<td class="${count > 0 ? 'has-data' : ''}">${count}</td>`;
+    });
+    rowHtml += `<td><strong>${total}</strong></td></tr>`;
+    tbody.innerHTML = rowHtml;
+
+    // Render chart
+    const ctx = document.getElementById('monthlyReportChart');
+    if (!ctx) return;
+    if (monthlyReportChart) monthlyReportChart.destroy();
+
+    const userLabel = showOnlyMe && currentUser ? currentUser.name : 'ทั้งหมด';
+    monthlyReportChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: thaiMonths,
+            datasets: [{
+                label: `จำนวนรายงาน (${userLabel}) ปี ${selectedYear + 543}`,
+                data: monthlyCounts,
+                backgroundColor: 'rgba(37, 99, 235, 0.7)',
+                borderColor: 'rgba(37, 99, 235, 1)',
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => thaiMonths[items[0].dataIndex] + ' ' + (selectedYear + 543),
+                        label: (item) => `จำนวน: ${item.raw} รายงาน`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, font: { family: 'Sarabun' } },
+                    title: { display: true, text: 'จำนวนรายงาน', font: { family: 'Sarabun' } }
+                },
+                x: {
+                    ticks: { font: { family: 'Sarabun' } }
+                }
+            }
+        }
+    });
+}
+
 // Helper function to format dates and handle invalid dates
 function formatDate(dateString) {
     if (!dateString || dateString.trim() === '') {
         return { date: 'N/A', time: 'N/A' };
     }
-    
+
     try {
         const date = new Date(dateString);
-        
+
         // Check if date is valid
         if (isNaN(date.getTime())) {
             console.warn('Invalid date:', dateString);
             return { date: 'วันที่ไม่ถูกต้อง', time: 'N/A' };
         }
-        
+
         const formattedDate = date.toLocaleDateString('th-TH', {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit'
         });
-        
+
         const formattedTime = date.toLocaleTimeString('th-TH', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false
         });
-        
+
         return { date: formattedDate, time: formattedTime };
     } catch (error) {
         console.error('Error formatting date:', error, dateString);
@@ -1901,7 +2227,7 @@ function formatDate(dateString) {
 
 function populateTable(data) {
     const tableBody = document.getElementById('errorTableBody');
-    
+
     if (!data || data.length === 0) {
         tableBody.innerHTML = `
             <tr>
@@ -1914,17 +2240,17 @@ function populateTable(data) {
                 </td>
             </tr>
         `;
-        updateTablePagination(0, 0);
+        updateTablePagination(0, 0, 0, 1, 1);
         return;
     }
 
     // Data is already filtered by applyUserFilter, so we just need to format it
     let workingData = data;
-    
+
     // Skip header row if exists
-    if (data.length > 0 && Array.isArray(data[0]) && data[0][0] && 
-        (data[0][0].toString().toLowerCase().includes('timestamp') || 
-         data[0][0].toString().toLowerCase().includes('วันที่'))) {
+    if (data.length > 0 && Array.isArray(data[0]) && data[0][0] &&
+        (data[0][0].toString().toLowerCase().includes('timestamp') ||
+            data[0][0].toString().toLowerCase().includes('วันที่'))) {
         workingData = data.slice(1);
     }
 
@@ -1940,7 +2266,7 @@ function populateTable(data) {
                 </td>
             </tr>
         `;
-        updateTablePagination(0, 0);
+        updateTablePagination(0, 0, 0, 1, 1);
         return;
     }
 
@@ -1948,13 +2274,13 @@ function populateTable(data) {
     const pageSize = parseInt(document.getElementById('tablePageSize')?.value || '25');
     const validRows = workingData.filter(row => {
         // Filter out empty rows - check if row has timestamp and report ID
-        return row && row[0] && row[1] && 
-               row[0].toString().trim() !== '' && 
-               row[1].toString().trim() !== '';
+        return row && row[0] && row[1] &&
+            row[0].toString().trim() !== '' &&
+            row[1].toString().trim() !== '';
     });
 
     // Sort by date (column 0) descending (latest first)
-    validRows.sort((a,b)=>{
+    validRows.sort((a, b) => {
         try {
             const da = new Date(a[0]);
             const db = new Date(b[0]);
@@ -1965,10 +2291,20 @@ function populateTable(data) {
         } catch { return 0; }
     });
 
-    const displayRows = validRows.slice(0, pageSize).map(row => {
+    // Cache for pagination navigation
+    cachedValidRows = validRows;
+
+    // Calculate pagination
+    const totalPages = Math.max(1, Math.ceil(validRows.length / pageSize));
+    if (currentTablePage > totalPages) currentTablePage = totalPages;
+    if (currentTablePage < 1) currentTablePage = 1;
+    const startIdx = (currentTablePage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, validRows.length);
+
+    const displayRows = validRows.slice(startIdx, endIdx).map(row => {
         // Validate and format data
         const reportId = row[1] || 'N/A';
-        
+
         // Better date handling using formatDate function
         const { date: formattedDate } = formatDate(row[0]);
         const shift = row[2] || 'N/A'; // เวร
@@ -1980,32 +2316,32 @@ function populateTable(data) {
 
         // Highlight current user's reports
         const isMyReport = currentUser && (
-            reporter === currentUser.name || 
+            reporter === currentUser.name ||
             reporter.includes(currentUser.name) ||
             reporter === currentUser.psCode ||
             reporter === currentUser.id13
         );
-        
+
         // Check for high priority errors (example criteria)
-        const isHighPriority = error.includes('ยาผิด') || error.includes('ขนาดผิด') || 
-                              error.includes('คนไข้ผิด') || process.includes('จ่ายยา');
-        
+        const isHighPriority = error.includes('ยาผิด') || error.includes('ขนาดผิด') ||
+            error.includes('คนไข้ผิด') || process.includes('จ่ายยา');
+
         let rowClass = '';
         if (isMyReport) rowClass += ' my-report';
         if (isHighPriority) rowClass += ' high-priority';
 
         return `
             <tr class="${rowClass}">
-                <td>${reportId}</td>
-                <td>${formattedDate}</td>
-                <td>${shift}</td>
-                <td>${errorType}</td>
-                <td>${location}</td>
-                <td>${process}</td>
-                <td>${error}</td>
-                <td>${reporter}</td>
+                <td>${escapeHtml(reportId)}</td>
+                <td>${escapeHtml(formattedDate)}</td>
+                <td>${escapeHtml(shift)}</td>
+                <td>${escapeHtml(errorType)}</td>
+                <td>${escapeHtml(location)}</td>
+                <td>${escapeHtml(process)}</td>
+                <td>${escapeHtml(error)}</td>
+                <td>${escapeHtml(reporter)}</td>
                 <td>
-                    <button class="btn-view" onclick="viewErrorDetail('${reportId}')" title="ดูรายละเอียด">
+                    <button class="btn-view" onclick="viewErrorDetail('${escapeHtml(reportId)}')" title="ดูรายละเอียด">
                         <i class="fas fa-eye"></i>
                     </button>
                 </td>
@@ -2014,30 +2350,55 @@ function populateTable(data) {
     }).join('');
 
     tableBody.innerHTML = displayRows;
-    
+
     // Update pagination info
-    updateTablePagination(Math.min(pageSize, validRows.length), validRows.length);
-    
+    updateTablePagination(startIdx + 1, endIdx, validRows.length, currentTablePage, totalPages);
+
     // Initialize table features
     initializeTableFeatures();
 }
 
 // Update table pagination information
-function updateTablePagination(showing, total) {
+function updateTablePagination(start, end, total, page, totalPages) {
     const showingStart = document.getElementById('showingStart');
     const showingEnd = document.getElementById('showingEnd');
     const totalRecords = document.getElementById('totalRecords');
-    
-    if (showingStart) showingStart.textContent = showing > 0 ? '1' : '0';
-    if (showingEnd) showingEnd.textContent = showing.toString();
+
+    if (showingStart) showingStart.textContent = total > 0 ? start : '0';
+    if (showingEnd) showingEnd.textContent = end;
     if (totalRecords) totalRecords.textContent = total.toString();
+
+    // Update page navigation buttons if they exist
+    const prevBtn = document.getElementById('tablePrevPage');
+    const nextBtn = document.getElementById('tableNextPage');
+    const pageInfo = document.getElementById('tablePageInfo');
+
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+    if (pageInfo) pageInfo.textContent = `หน้า ${page} / ${totalPages}`;
+}
+
+// Pagination navigation functions
+function tableNextPage() {
+    currentTablePage++;
+    populateTable(lastUserFilteredData);
+}
+
+function tablePrevPage() {
+    currentTablePage = Math.max(1, currentTablePage - 1);
+    populateTable(lastUserFilteredData);
+}
+
+function tablePageSizeChanged() {
+    currentTablePage = 1;
+    populateTable(lastUserFilteredData);
 }
 
 // Initialize table features (sorting, search, etc.)
 function initializeTableFeatures() {
     // Add table sorting
     addTableSorting();
-    
+
     // Add search functionality
     addTableSearch();
 }
@@ -2049,21 +2410,25 @@ function addTableSorting() {
 
     const headers = table.querySelectorAll('th.sortable');
     headers.forEach((header, index) => {
+        // Prevent duplicate listeners
+        if (header.dataset.sortListenerAdded) return;
+        header.dataset.sortListenerAdded = 'true';
+
         header.addEventListener('click', () => {
             const currentSort = header.getAttribute('data-sort-direction') || 'asc';
             const newSort = currentSort === 'asc' ? 'desc' : 'asc';
-            
+
             // Reset all other headers
             headers.forEach(h => {
                 h.setAttribute('data-sort-direction', '');
                 h.querySelector('i').className = 'fas fa-sort';
             });
-            
+
             // Set current header
             header.setAttribute('data-sort-direction', newSort);
             const icon = header.querySelector('i');
             icon.className = newSort === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
-            
+
             sortTableByColumn(index, newSort === 'asc');
         });
     });
@@ -2073,38 +2438,38 @@ function addTableSorting() {
 function sortTableByColumn(columnIndex, ascending = true) {
     const table = document.getElementById('errorTable');
     const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => 
+    const rows = Array.from(tbody.querySelectorAll('tr')).filter(row =>
         !row.querySelector('.no-data-content')
     );
-    
+
     rows.sort((a, b) => {
-    const aCell = a.cells[columnIndex];
-    const bCell = b.cells[columnIndex];
-    const aText = aCell && aCell.textContent ? aCell.textContent.trim() : '';
-    const bText = bCell && bCell.textContent ? bCell.textContent.trim() : '';
-        
+        const aCell = a.cells[columnIndex];
+        const bCell = b.cells[columnIndex];
+        const aText = aCell && aCell.textContent ? aCell.textContent.trim() : '';
+        const bText = bCell && bCell.textContent ? bCell.textContent.trim() : '';
+
         // Try to parse as numbers or dates first
         const aNum = parseFloat(aText);
         const bNum = parseFloat(bText);
-        
+
         if (!isNaN(aNum) && !isNaN(bNum)) {
             return ascending ? aNum - bNum : bNum - aNum;
         }
-        
+
         // Try to parse as dates
         const aDate = new Date(aText);
         const bDate = new Date(bText);
-        
+
         if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
             return ascending ? aDate - bDate : bDate - aDate;
         }
-        
+
         // Default to string comparison
-        return ascending ? 
+        return ascending ?
             aText.localeCompare(bText, 'th', { numeric: true }) :
             bText.localeCompare(aText, 'th', { numeric: true });
     });
-    
+
     // Re-append sorted rows
     rows.forEach(row => tbody.appendChild(row));
 }
@@ -2129,35 +2494,35 @@ function filterTableRows(searchTerm) {
     const table = document.getElementById('errorTable');
     const tbody = table.querySelector('tbody');
     const rows = tbody.querySelectorAll('tr');
-    
+
     let visibleCount = 0;
-    
+
     rows.forEach(row => {
         if (row.querySelector('.no-data-content')) {
             return; // Skip no-data rows
         }
-        
+
         const rowText = Array.from(row.cells)
             .slice(0, 8) // Exclude action column
             .map(cell => cell.textContent.toLowerCase())
             .join(' ');
-        
+
         const isVisible = searchTerm === '' || rowText.includes(searchTerm);
         row.style.display = isVisible ? '' : 'none';
-        
+
         if (isVisible) visibleCount++;
     });
-    
-    // Update table statistics
+
+    // Update table statistics - filter adjusts visible rows without changing pagination
     const totalRecords = document.getElementById('totalRecords');
     const originalTotal = totalRecords ? parseInt(totalRecords.textContent) : 0;
-    updateTablePagination(visibleCount, originalTotal);
+    updateTablePagination(1, visibleCount, originalTotal, 1, 1);
 }
 
 // View error detail function
 function viewErrorDetail(reportId) {
     showNotification(`กำลังโหลดรายละเอียดของรายงาน: ${reportId}`, 'info');
-    
+
     // Future implementation: Open modal with detailed error information
     // For now, just show a notification
     setTimeout(() => {
@@ -2175,7 +2540,7 @@ function setCurrentDate() {
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const day = String(today.getDate()).padStart(2, '0');
         const currentDate = `${year}-${month}-${day}`;
-        
+
         eventDateInput.value = currentDate;
         console.log('Set current date:', currentDate);
     }
@@ -2185,24 +2550,24 @@ function setCurrentDate() {
 function initializeFormDefaults() {
     // Set current date
     setCurrentDate();
-    
+
     // Setup enhanced form with validation
     setupFormEnhanced();
-    
+
     // Reset form to initial state
     const form = document.getElementById('errorForm');
     if (form) {
         form.reset();
-        
+
         // Set current date again after reset
         setTimeout(() => {
             setCurrentDate();
         }, 100);
     }
-    
+
     // Clear any previous error messages
     clearFormErrors();
-    
+
     // Focus on first input
     const firstInput = document.getElementById('shift');
     if (firstInput) {
@@ -2226,10 +2591,10 @@ function clearFormErrors() {
 function validateForm() {
     let isValid = true;
     const errors = [];
-    
+
     // Clear previous errors
     clearFormErrors();
-    
+
     // Required fields validation
     const requiredFields = [
         { id: 'eventDate', name: 'วันที่เกิดเหตุการณ์' },
@@ -2241,18 +2606,18 @@ function validateForm() {
         { id: 'correctItem', name: 'รายการที่ถูกต้อง' },
         { id: 'cause', name: 'สาเหตุ' }
     ];
-    
+
     requiredFields.forEach(field => {
         const element = document.getElementById(field.id);
         if (element && (!element.value || element.value.trim() === '')) {
             isValid = false;
             errors.push(field.name);
-            
+
             // Add visual error indication
             const formGroup = element.closest('.form-group');
             if (formGroup) {
                 formGroup.classList.add('has-error');
-                
+
                 // Add error message
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'error-message';
@@ -2261,18 +2626,18 @@ function validateForm() {
             }
         }
     });
-    
+
     // Date validation (not in future)
     const eventDate = document.getElementById('eventDate');
     if (eventDate && eventDate.value) {
         const selectedDate = new Date(eventDate.value);
         const today = new Date();
         today.setHours(23, 59, 59, 999); // End of today
-        
+
         if (selectedDate > today) {
             isValid = false;
             errors.push('วันที่เกิดเหตุการณ์ไม่สามารถเป็นวันในอนาคตได้');
-            
+
             const formGroup = eventDate.closest('.form-group');
             if (formGroup) {
                 formGroup.classList.add('has-error');
@@ -2283,19 +2648,19 @@ function validateForm() {
             }
         }
     }
-    
+
     // Show summary of errors
     if (!isValid) {
         const errorSummary = `กรุณาตรวจสอบข้อมูลต่อไปนี้:\n• ${errors.join('\n• ')}`;
         showNotification(errorSummary, 'error');
-        
+
         // Scroll to first error
         const firstError = document.querySelector('.form-group.has-error');
         if (firstError) {
             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
-    
+
     return isValid;
 }
 
@@ -2303,20 +2668,20 @@ function validateForm() {
 function setupFormValidation() {
     const form = document.getElementById('errorForm');
     if (!form) return;
-    
+
     // Add event listeners for real-time validation
     const inputs = form.querySelectorAll('input, select, textarea');
     inputs.forEach(input => {
-        input.addEventListener('blur', function() {
+        input.addEventListener('blur', function () {
             validateField(this);
-            
+
             // ตรวจสอบ HAD เมื่อพิมพ์ข้อมูลในฟิลด์ยา
             if (['correctItem', 'incorrectItem', 'errorDetail'].includes(this.id)) {
                 checkHADRealtime();
             }
         });
-        
-        input.addEventListener('input', function() {
+
+        input.addEventListener('input', function () {
             // Clear error state on input
             const formGroup = this.closest('.form-group');
             if (formGroup && formGroup.classList.contains('has-error')) {
@@ -2326,7 +2691,7 @@ function setupFormValidation() {
                     errorMsg.remove();
                 }
             }
-            
+
             // ตรวจสอบ HAD แบบ real-time สำหรับฟิลด์ยา
             if (['correctItem', 'incorrectItem', 'errorDetail'].includes(this.id)) {
                 clearTimeout(this.hadCheckTimeout);
@@ -2336,11 +2701,11 @@ function setupFormValidation() {
             }
         });
     });
-    
+
     // Special handling for date input
     const eventDate = document.getElementById('eventDate');
     if (eventDate) {
-        eventDate.addEventListener('change', function() {
+        eventDate.addEventListener('change', function () {
             validateField(this);
         });
     }
@@ -2350,43 +2715,43 @@ function setupFormValidation() {
 function validateField(field) {
     const formGroup = field.closest('.form-group');
     if (!formGroup) return;
-    
+
     let isValid = true;
     let errorMessage = '';
-    
+
     // Clear previous error
     formGroup.classList.remove('has-error', 'has-success');
     const existingError = formGroup.querySelector('.error-message');
     if (existingError) {
         existingError.remove();
     }
-    
+
     // Check if field is required
     const requiredFields = ['eventDate', 'shift', 'errorType', 'location', 'process', 'errorDetail', 'correctItem', 'cause'];
     const isRequired = requiredFields.includes(field.id);
-    
+
     if (isRequired && (!field.value || field.value.trim() === '')) {
         isValid = false;
-    const prevLabel = field.previousElementSibling && field.previousElementSibling.textContent ? field.previousElementSibling.textContent : 'ข้อมูล';
-    errorMessage = `กรุณากรอก${prevLabel}`;
+        const prevLabel = field.previousElementSibling && field.previousElementSibling.textContent ? field.previousElementSibling.textContent : 'ข้อมูล';
+        errorMessage = `กรุณากรอก${prevLabel}`;
     }
-    
+
     // Date validation
     if (field.id === 'eventDate' && field.value) {
         const selectedDate = new Date(field.value);
         const today = new Date();
         today.setHours(23, 59, 59, 999);
-        
+
         if (selectedDate > today) {
             isValid = false;
             errorMessage = 'วันที่เกิดเหตุการณ์ไม่สามารถเป็นวันในอนาคตได้';
         }
     }
-    
+
     // Apply validation state
     if (!isValid) {
         formGroup.classList.add('has-error');
-        
+
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.textContent = errorMessage;
@@ -2394,20 +2759,20 @@ function validateField(field) {
     } else if (field.value && field.value.trim() !== '') {
         formGroup.classList.add('has-success');
     }
-    
+
     return isValid;
 }
 
 // Enhanced form setup
 function setupFormEnhanced() {
     setupFormValidation();
-    
+
     // Add form submit handler with validation
     const form = document.getElementById('errorForm');
     if (form) {
         // Ensure we don't attach multiple listeners
         if (!form.dataset.listenerAttached) {
-            form.addEventListener('submit', function(e) {
+            form.addEventListener('submit', function (e) {
                 e.preventDefault();
                 if (validateForm()) {
                     handleFormSubmit(e);
@@ -2416,21 +2781,49 @@ function setupFormEnhanced() {
             form.dataset.listenerAttached = 'true';
         }
     }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function (e) {
+        // Ctrl+Enter or Cmd+Enter to submit current form
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            const activeSection = document.querySelector('.section.active');
+            if (activeSection && activeSection.id === 'form') {
+                e.preventDefault();
+                const errorForm = document.getElementById('errorForm');
+                if (errorForm && validateForm()) {
+                    handleFormSubmit(new Event('submit', { cancelable: true }));
+                }
+            }
+        }
+        // Ctrl+D to switch to dashboard
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd' && !e.shiftKey) {
+            e.preventDefault();
+            navigateTo(null, 'dashboard');
+        }
+    });
 }
 
 // Event listeners
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM fully loaded');
-    
+document.addEventListener('DOMContentLoaded', function () {
+    console.log('DOM fully loaded — page:', currentPage);
+
     // Check authentication first
     if (checkAuthentication()) {
         // User is already logged in, initialize the app
         initializeApp();
+
+        // Handle hash-based navigation for index.html (e.g., index.html#druglist)
+        if ((currentPage === 'main' || currentPage === 'index') && window.location.hash) {
+            const hashSection = window.location.hash.replace('#', '');
+            if (hashSection && document.getElementById(hashSection)) {
+                showSection(hashSection);
+            }
+        }
     } else {
         // User not logged in, show login page
         showLoginPage();
     }
-    
+
     // Login form event listener
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
@@ -2439,32 +2832,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    console.log('=== initializeApp called ===');
-    console.log('currentUser in initializeApp:', currentUser);
-    
     // Load saved configuration
     loadConfig();
-    
+
     // Initialize form defaults (including current date and validation)
     initializeFormDefaults();
-    
+
     // Initialize form
     initializeForm();
-    
+
     // Update reporter field with current user - delay to ensure DOM is ready
-    setTimeout(() => {
-        console.log('Calling updateReporterField from initializeApp');
-        updateReporterField();
-    }, 200);
-    
+    setTimeout(() => { updateReporterField(); }, 200);
+
     // Update dashboard user info
     updateDashboardUserInfo();
-    
+
     // แสดงสถานะ Demo Mode ถ้าไม่ได้ตั้งค่า Web App URL
     if (!googleSheetsConfig.webAppUrl) {
         showNotification('🔄 กำลังทำงานในโหมดทดสอบ - ข้อมูลจะไม่ถูกบันทึกใน Google Sheets จริง', 'info');
     }
-    
+
     // Location change listener for substation toggle
     const locSelect = document.getElementById('location');
     const subGroup = document.getElementById('substationGroup');
@@ -2479,26 +2866,24 @@ function initializeApp() {
             }
         });
     }
-    
+
     // Form event listeners (single enhanced listener with validation)
     setupFormEnhanced();
     const settingsForm = document.getElementById('settingsForm');
     if (settingsForm) {
         settingsForm.addEventListener('submit', handleSettingsSubmit);
-    } else {
-        console.warn('settingsForm not found');
     }
-    
+
     // Drug form event listener
     const drugForm = document.getElementById('drugForm');
     if (drugForm) {
         drugForm.addEventListener('submit', handleDrugFormSubmit);
     }
-    
+
     // Filter change listeners
     const filterUserEl = document.getElementById('filterUser');
     if (filterUserEl) {
-        filterUserEl.addEventListener('change', function() {
+        filterUserEl.addEventListener('change', function () {
             loadData();
             updateDashboardUserInfo();
         });
@@ -2506,20 +2891,17 @@ function initializeApp() {
 
     const filterPeriodEl = document.getElementById('filterPeriod');
     if (filterPeriodEl) {
-        filterPeriodEl.addEventListener('change', function() {
+        filterPeriodEl.addEventListener('change', function () {
             loadData();
             updateDashboardUserInfo();
         });
     }
-    
+
     // Auto-save settings when user types
-    ['apiKey', 'spreadsheetId', 'sheetName', 'userSheetName', 'drugSheetName', 'webAppUrl'].forEach(id => {
+    ['apiKey', 'spreadsheetId', 'sheetName', 'userSheetName', 'drugSheetName', 'webAppUrl', 'externalDrugSourceUrl', 'externalDrugSourceToken', 'externalDrugSourceFormat', 'externalDrugDataPath', 'externalDrugAutoSyncMinutes'].forEach(id => {
         const el = document.getElementById(id);
-        if (!el) {
-            console.warn('Config input not found:', id);
-            return;
-        }
-        el.addEventListener('input', function() {
+        if (!el) return;
+        el.addEventListener('input', function () {
             if (id === 'apiKey') {
                 googleSheetsConfig.apiKey = this.value;
             } else if (id === 'spreadsheetId') {
@@ -2532,10 +2914,40 @@ function initializeApp() {
                 googleSheetsConfig.drugSheetName = this.value;
             } else if (id === 'webAppUrl') {
                 googleSheetsConfig.webAppUrl = this.value;
+            } else if (id === 'externalDrugSourceUrl') {
+                googleSheetsConfig.externalDrugSourceUrl = this.value;
+            } else if (id === 'externalDrugSourceToken') {
+                googleSheetsConfig.externalDrugSourceToken = this.value;
+            } else if (id === 'externalDrugSourceFormat') {
+                googleSheetsConfig.externalDrugSourceFormat = this.value || 'json';
+            } else if (id === 'externalDrugDataPath') {
+                googleSheetsConfig.externalDrugDataPath = this.value;
+            } else if (id === 'externalDrugAutoSyncMinutes') {
+                googleSheetsConfig.externalDrugAutoSyncMinutes = Number(this.value || 0);
             }
             saveConfig();
+            if (id === 'externalDrugAutoSyncMinutes') {
+                setupExternalDrugSyncTimer();
+            }
+            updateExternalSyncStatus();
         });
     });
+
+    const externalSyncBtn = document.getElementById('syncExternalDrugListBtn');
+    if (externalSyncBtn) {
+        externalSyncBtn.addEventListener('click', handleSyncDrugListFromExternal);
+    }
+    const syncToSheetsBtn = document.getElementById('syncDrugToSheetsBtn');
+    if (syncToSheetsBtn) {
+        syncToSheetsBtn.addEventListener('click', handleSyncDrugMySQLToSheets);
+    }
+    const testExternalBtn = document.getElementById('testExternalDrugConnectionBtn');
+    if (testExternalBtn) {
+        testExternalBtn.addEventListener('click', handleTestExternalDrugConnection);
+    }
+
+    setupExternalDrugSyncTimer();
+    updateExternalSyncStatus();
 }
 
 // Utility functions
@@ -2556,13 +2968,362 @@ function generateSampleData() {
             preventiveMeasures: 'Double-check high-risk medications, implement barcode scanning'
         }
     ];
-    
+
     return sampleErrors;
+}
+
+function getNestedValue(obj, path) {
+    if (!path || !obj || typeof obj !== 'object') return obj;
+    return path.split('.').reduce((acc, part) => {
+        if (acc && typeof acc === 'object' && part in acc) {
+            return acc[part];
+        }
+        return undefined;
+    }, obj);
+}
+
+function toDrugHadValue(value) {
+    const normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (!normalized) return 'Regular';
+    return ['1', 'high', 'h', 'had', 'yes', 'true', 'y'].includes(normalized) ? 'High' : 'Regular';
+}
+
+function toDrugStatusValue(value) {
+    const normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (!normalized) return 'Active';
+    if (['0', 'inactive', 'i', 'false', 'no', 'n', 'discontinued'].includes(normalized)) {
+        return normalized === 'discontinued' ? 'Discontinued' : 'Inactive';
+    }
+    return 'Active';
+}
+
+function normalizeExternalDrugItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    const drugCode = String(item.drugCode || item.code || item.drug_code || item.itemCode || '').trim();
+    const drugName = String(item.drugName || item.name || item.drug_name || item.itemName || '').trim();
+    if (!drugCode && !drugName) return null;
+
+    return {
+        drugCode,
+        drugName,
+        group: String(item.group || item.drugGroup || item.category || item.type || 'Other').trim(),
+        had: toDrugHadValue(item.had || item.isHad || item.highAlert),
+        status: toDrugStatusValue(item.status || item.active)
+    };
+}
+
+function parseCsvExternalDrugData(csvText) {
+    const text = String(csvText || '').replace(/^\uFEFF/, '');
+    if (!text.trim()) return [];
+
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const next = text[i + 1];
+
+        if (inQuotes) {
+            if (ch === '"' && next === '"') {
+                field += '"';
+                i++;
+            } else if (ch === '"') {
+                inQuotes = false;
+            } else {
+                field += ch;
+            }
+            continue;
+        }
+
+        if (ch === '"') {
+            inQuotes = true;
+        } else if (ch === ',') {
+            row.push(field);
+            field = '';
+        } else if (ch === '\n' || ch === '\r') {
+            if (ch === '\r' && next === '\n') i++;
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = '';
+        } else {
+            field += ch;
+        }
+    }
+
+    row.push(field);
+    rows.push(row);
+
+    const nonEmptyRows = rows.filter(r => r.some(cell => String(cell || '').trim() !== ''));
+    if (nonEmptyRows.length < 2) return [];
+
+    const headers = nonEmptyRows[0].map(h => String(h || '').trim());
+    return nonEmptyRows.slice(1).map(cells => {
+        const obj = {};
+        headers.forEach((header, idx) => {
+            obj[header] = String(cells[idx] || '').trim();
+        });
+        return obj;
+    });
+}
+
+async function fetchExternalDrugRows() {
+    const sourceUrl = (googleSheetsConfig.externalDrugSourceUrl || '').trim();
+    const sourceFormat = (googleSheetsConfig.externalDrugSourceFormat || 'json').toLowerCase();
+    const dataPath = (googleSheetsConfig.externalDrugDataPath || '').trim();
+    const token = (googleSheetsConfig.externalDrugSourceToken || '').trim();
+
+    if (!sourceUrl) {
+        throw new Error('กรุณาตั้งค่า External Drug Source URL');
+    }
+
+    const headers = {};
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(sourceUrl, { method: 'GET', headers });
+    if (!response.ok) {
+        throw new Error(`ไม่สามารถเชื่อมต่อฐานข้อมูลภายนอกได้ (HTTP ${response.status})`);
+    }
+
+    let rows = [];
+    if (sourceFormat === 'csv') {
+        const csvText = await response.text();
+        rows = parseCsvExternalDrugData(csvText);
+    } else {
+        const payload = await response.json();
+        const extracted = dataPath ? getNestedValue(payload, dataPath) : (payload.data || payload.items || payload.drugs || payload);
+        if (!Array.isArray(extracted)) {
+            throw new Error('รูปแบบข้อมูลภายนอกไม่ถูกต้อง: ควรเป็น array');
+        }
+        rows = extracted;
+    }
+
+    const normalizedDrugs = rows.map(normalizeExternalDrugItem).filter(Boolean);
+    if (normalizedDrugs.length === 0) {
+        throw new Error('ไม่พบข้อมูลยาที่ถูกต้องจากฐานข้อมูลภายนอก');
+    }
+    return normalizedDrugs;
+}
+
+function applyDrugListUpdate(newDrugList, sourceName) {
+    const cleaned = cleanDrugData(newDrugList || []);
+    drugListData = cleaned;
+    globalDrugList = cleaned;
+    renderDrugTable();
+    updateDrugStats();
+    populateDrugDropdowns();
+    setupSearchableDropdowns();
+    displayHADListFromDatabase(globalDrugList);
+    showNotification(`อัปเดตรายการยาจาก ${sourceName} สำเร็จ (${cleaned.length} รายการ)`, 'success');
+
+    const syncAtEl = document.getElementById('externalSyncLastUpdated');
+    if (syncAtEl) {
+        syncAtEl.textContent = new Date().toLocaleString('th-TH');
+    }
+}
+
+function setExternalSyncButtonLoading(isLoading) {
+    const btn = document.getElementById('syncExternalDrugListBtn');
+    if (!btn) return;
+    if (isLoading) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังอัปเดต';
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.originalText || '<i class="fas fa-sync-alt"></i> อัปเดตรายการยาจากฐานข้อมูลภายนอก';
+    }
+}
+
+function updateExternalSyncStatus() {
+    const statusEl = document.getElementById('externalSyncStatus');
+    if (!statusEl) return;
+
+    if (!googleSheetsConfig.externalDrugSourceUrl) {
+        statusEl.textContent = 'ยังไม่ตั้งค่า';
+        return;
+    }
+
+    const every = Number(googleSheetsConfig.externalDrugAutoSyncMinutes || 0);
+    if (every > 0) {
+        statusEl.textContent = `พร้อมใช้งาน (ทุก ${every} นาที)`;
+    } else {
+        statusEl.textContent = 'พร้อมใช้งาน (manual)';
+    }
+}
+
+async function saveExternalDrugListToWebApp(drugs) {
+    if (!googleSheetsConfig.webAppUrl || !Array.isArray(drugs) || drugs.length === 0) {
+        return false;
+    }
+
+    try {
+        const response = await fetch(googleSheetsConfig.webAppUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'replaceDrugList',
+                drugSheetName: googleSheetsConfig.drugSheetName || 'Drug_List',
+                drugs
+            })
+        });
+        const result = await response.json();
+        return Boolean(result && result.success);
+    } catch (error) {
+        console.warn('Failed to save external drug list to Web App:', error);
+        return false;
+    }
+}
+
+async function syncDrugListFromExternalDatabase(options = {}) {
+    const normalizedDrugs = await fetchExternalDrugRows();
+
+    applyDrugListUpdate(normalizedDrugs, 'External Database');
+    const persisted = await saveExternalDrugListToWebApp(normalizedDrugs);
+    if (persisted && !options.silent) {
+        showNotification('บันทึกรายการยาลงฐานข้อมูลหลักเรียบร้อยแล้ว', 'success');
+    }
+
+    return normalizedDrugs;
+}
+
+async function handleSyncDrugListFromExternal() {
+    setExternalSyncButtonLoading(true);
+    try {
+        await syncDrugListFromExternalDatabase();
+    } catch (error) {
+        console.error('External drug sync failed:', error);
+        showNotification(error.message || 'อัปเดตรายการยาจากฐานข้อมูลภายนอกไม่สำเร็จ', 'error');
+    } finally {
+        setExternalSyncButtonLoading(false);
+    }
+}
+
+// Sync drugs from MySQL to Google Sheets via Express server API
+async function handleSyncDrugMySQLToSheets() {
+    const btn = document.getElementById('syncDrugToSheetsBtn');
+    if (!btn) return;
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลัง Sync...';
+
+    try {
+        // Determine server base URL (same origin or configured)
+        const serverUrl = googleSheetsConfig.serverUrl || window.location.origin;
+        const response = await fetch(`${serverUrl}/api/drugs/sync-to-sheets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sheetName: googleSheetsConfig.drugSheetName || 'Drug_List'
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Sync failed');
+        }
+
+        // Reload drug list from updated local JSON
+        await loadDrugList();
+
+        showNotification(`Sync สำเร็จ: ${result.count} รายการยา → drug_list.json + Google Sheets`, 'success');
+
+        const syncAtEl = document.getElementById('externalSyncLastUpdated');
+        if (syncAtEl) {
+            syncAtEl.textContent = new Date().toLocaleString('th-TH');
+        }
+    } catch (error) {
+        console.error('MySQL → Sheets sync failed:', error);
+        showNotification(`Sync ไม่สำเร็จ: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+async function handleTestExternalDrugConnection() {
+    const btn = document.getElementById('testExternalDrugConnectionBtn');
+    const resultEl = document.getElementById('externalDrugTestResult');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังทดสอบ';
+    }
+    try {
+        const rows = await fetchExternalDrugRows();
+        const sample = rows[0];
+        const sampleText = sample ? `${sample.drugCode || '-'} ${sample.drugName || ''}`.trim() : '-';
+        if (resultEl) {
+            resultEl.textContent = `เชื่อมต่อสำเร็จ พบ ${rows.length} รายการ ตัวอย่าง: ${sampleText}`;
+            resultEl.className = 'external-test-result success';
+        }
+        showNotification(`ทดสอบการเชื่อมต่อสำเร็จ (${rows.length} รายการ)`, 'success');
+    } catch (error) {
+        console.error('External connection test failed:', error);
+        if (resultEl) {
+            resultEl.textContent = `เชื่อมต่อไม่สำเร็จ: ${error.message || 'Unknown error'}`;
+            resultEl.className = 'external-test-result error';
+        }
+        showNotification(error.message || 'ทดสอบการเชื่อมต่อไม่สำเร็จ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml || '<i class="fas fa-vial"></i> ทดสอบการเชื่อมต่อ';
+        }
+    }
+}
+
+function setupExternalDrugSyncTimer() {
+    if (drugSyncTimer) {
+        clearInterval(drugSyncTimer);
+        drugSyncTimer = null;
+    }
+
+    const everyMinutes = Number(googleSheetsConfig.externalDrugAutoSyncMinutes || 0);
+    if (!googleSheetsConfig.externalDrugSourceUrl || !everyMinutes || everyMinutes < 1) {
+        return;
+    }
+
+    drugSyncTimer = setInterval(async () => {
+        try {
+            await syncDrugListFromExternalDatabase({ silent: true });
+        } catch (error) {
+            console.warn('Auto sync external drug list failed:', error);
+        }
+    }, everyMinutes * 60 * 1000);
 }
 
 // Drug List Management Functions
 async function loadDrugList() {
     try {
+        // Try loading from local drug_list.json (fetched from MySQL) first
+        try {
+            const response = await fetch('drug_list.json');
+            if (response.ok) {
+                const drugs = await response.json();
+                if (Array.isArray(drugs) && drugs.length > 0) {
+                    drugListData = drugs;
+                    globalDrugList = cleanDrugData(drugs);
+                    setupDrugSearchInputs();
+                    renderDrugTable();
+                    updateDrugStats();
+                    displayHADListFromDatabase(globalDrugList);
+                    showNotification(`โหลดรายการยาจากฐานข้อมูล MySQL (${globalDrugList.length} รายการ)`, 'success');
+                    console.log(`โหลดรายการยาจาก drug_list.json: ${globalDrugList.length} รายการ`);
+                    return;
+                }
+            }
+        } catch (jsonError) {
+            console.log('drug_list.json not available, trying other sources:', jsonError.message);
+        }
+
         if (!googleSheetsConfig.webAppUrl) {
             // Demo Mode: ใช้ข้อมูลยาตัวอย่างถ้าไม่ได้ตั้งค่า Web App URL
             console.log('Demo Mode: ใช้ข้อมูลยาตัวอย่าง');
@@ -2573,51 +3334,60 @@ async function loadDrugList() {
                 { drugCode: 'WAR5', drugName: 'Warfarin 5mg', group: 'Anticoagulant', had: 'High', status: 'Active' },
                 { drugCode: 'ATR025', drugName: 'Atorvastatin 20mg', group: 'Statin', had: 'Regular', status: 'Active' }
             ];
-            
+
             // ทำความสะอาดและตรวจสอบข้อมูล
+            drugListData = sampleDrugs;
             globalDrugList = cleanDrugData(sampleDrugs);
             setupDrugSearchInputs();
             console.log('โหลดข้อมูลยาตัวอย่าง:', globalDrugList.length, 'รายการ');
-            
+
             // แสดงรายการ HAD จากข้อมูลตัวอย่าง
             displayHADListFromDatabase(globalDrugList);
-            
+
             return sampleDrugs;
         }
 
-        // Use FormData submission to avoid CORS preflight issues
+        // Use GET request for drug list (simpler, avoids CORS issues with POST redirect)
         try {
-            const formData = new FormData();
-            formData.append('action', 'getDrugList');
-            formData.append('drugSheetName', googleSheetsConfig.drugSheetName || 'Drug_List');
-            
-            const response = await fetch(googleSheetsConfig.webAppUrl, {
-                method: 'POST',
-                body: formData  // ใช้ FormData แทน JSON เพื่อหลีกเลี่ยง CORS preflight
-            });
-            
+            const drugUrl = googleSheetsConfig.webAppUrl + '?action=getDrugs';
+            const response = await fetch(drugUrl, { redirect: 'follow' });
             const result = await response.json();
-            
+
             if (result.success) {
                 drugListData = result.data || [];
-                
+
+                // Map from getDrugs format to standard format
+                drugListData = drugListData.map(d => ({
+                    drugCode: d.code || d.drugCode || '',
+                    drugName: d.name || d.drugName || '',
+                    group: d.group || '',
+                    had: d.had || '',
+                    status: d.status ? 'Active' : 'Inactive',
+                    unit: d.unit || '',
+                    strength: d.strength || '',
+                    dosageForm: d.dosageForm || '',
+                    tmtCode: d.tmtCode || '',
+                    unitPrice: d.unitPrice || 0
+                }));
+
                 // ทำความสะอาดและอัปเดต globalDrugList
                 globalDrugList = cleanDrugData(drugListData);
-                
+
                 renderDrugTable();
                 updateDrugStats();
+                setupSearchableDropdowns();
                 showNotification(`โหลดรายการยาเรียบร้อย (${result.count} รายการ)`, 'success');
-                
+
                 // แสดงรายการ HAD จากฐานข้อมูล
                 displayHADListFromDatabase(globalDrugList);
-                
+
                 return;
             } else {
                 throw new Error(result.error || 'Unknown error from Web App');
             }
         } catch (webAppError) {
             console.log('Web App failed, trying form submission fallback:', webAppError);
-            
+
             // Try form submission fallback
             try {
                 const success = await loadDrugListViaForm();
@@ -2628,7 +3398,7 @@ async function loadDrugList() {
             } catch (formError) {
                 console.log('Form submission also failed:', formError);
             }
-            
+
             // If both methods fail, try Google Sheets API
             console.log('Form submission failed, trying Google Sheets API fallback');
             try {
@@ -2638,11 +3408,11 @@ async function loadDrugList() {
                 createSampleDrugData();
             }
         }
-        
+
     } catch (error) {
         console.error('Error loading drug list:', error);
         showNotification('ไม่สามารถโหลดรายการยาได้ - ใช้ข้อมูลตัวอย่าง', 'warning');
-        
+
         // Use sample data as final fallback
         createSampleDrugData();
     }
@@ -2657,15 +3427,15 @@ async function loadDrugListFromAPI() {
         }
 
         console.log('Loading drug list from API with drugSheetName:', googleSheetsConfig.drugSheetName);
-        const range = `${googleSheetsConfig.drugSheetName}!A:E`;
+        const range = `${googleSheetsConfig.drugSheetName}!A:J`;
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${googleSheetsConfig.spreadsheetId}/values/${range}?key=${googleSheetsConfig.apiKey}`;
-        
+
         console.log('API URL:', url);
         const response = await fetch(url);
         const data = await response.json();
-        
+
         console.log('API Response:', data);
-        
+
         if (data.error) {
             console.error('API Error:', data.error);
             // If sheet doesn't exist, create empty drug list
@@ -2675,7 +3445,7 @@ async function loadDrugListFromAPI() {
             showNotification(`ไม่พบ sheet "${googleSheetsConfig.drugSheetName}" หรือเกิดข้อผิดพลาด: ${data.error.message}`, 'error');
             return;
         }
-        
+
         if (data.values && data.values.length > 1) {
             // Skip header row and convert data format to match your sheet structure
             drugListData = data.values.slice(1).map((row, index) => {
@@ -2685,28 +3455,33 @@ async function loadDrugListFromAPI() {
                     group: row[2] || '',
                     had: row[3] == 1 || row[3] === 'High' || row[3] === 'HIGH' || row[3] === 'H' ? 'High' : 'Regular',
                     // More flexible status checking - default to Active if empty or unclear
-                    status: (row[4] === '' || row[4] === null || row[4] === undefined || 
-                            row[4] == 1 || row[4] === 'Active' || row[4] === 'ACTIVE' || 
-                            row[4] === 'A' || row[4] === 'YES' || row[4] === 'Y' || 
-                            row[4] === true || row[4] === 'TRUE') ? 'Active' : 'Inactive'
+                    status: (row[4] === '' || row[4] === null || row[4] === undefined ||
+                        row[4] == 1 || row[4] === 'Active' || row[4] === 'ACTIVE' ||
+                        row[4] === 'A' || row[4] === 'YES' || row[4] === 'Y' ||
+                        row[4] === true || row[4] === 'TRUE') ? 'Active' : 'Inactive',
+                    unit: row[5] || '',
+                    strength: row[6] || '',
+                    dosageForm: row[7] || '',
+                    tmtCode: row[8] || '',
+                    unitPrice: row[9] || 0
                 };
-                
+
                 // Debug log first few drugs
                 if (index < 3) {
                     console.log(`Drug ${index + 1}:`, drug, 'Raw row:', row);
                 }
-                
+
                 return drug;
             });
-            
+
             console.log(`Loaded ${drugListData.length} drugs from API`);
             console.log('Sample drugs:', drugListData.slice(0, 3));
-            
+
             // Count active drugs for debugging
             const activeDrugs = drugListData.filter(drug => drug.status === 'Active');
             console.log(`Active drugs found: ${activeDrugs.length}`);
             console.log('Active drugs sample:', activeDrugs.slice(0, 3));
-            
+
             // If no active drugs found, mark first 10 as active for demo
             if (activeDrugs.length === 0 && drugListData.length > 0) {
                 console.log('No active drugs found, marking first 10 as Active for demo');
@@ -2720,22 +3495,23 @@ async function loadDrugListFromAPI() {
             drugListData = [];
             console.log('No drug data found in sheet');
         }
-        
+
         // ทำความสะอาดและอัปเดต globalDrugList
         globalDrugList = cleanDrugData(drugListData);
-        
+
         renderDrugTable();
         updateDrugStats();
-        
+        setupSearchableDropdowns();
+
         // แสดงรายการ HAD จากฐานข้อมูล
         displayHADListFromDatabase(globalDrugList);
-        
+
         showNotification(`โหลดรายการยาเรียบร้อย (ผ่าน API) - ${drugListData.length} รายการ`, 'success');
-        
+
     } catch (error) {
         console.error('Error loading drug list from API:', error);
         showNotification('เกิดข้อผิดพลาดในการโหลดรายการยาจาก API: ' + error.message, 'error');
-        
+
         // Create sample drug data as fallback
         createSampleDrugData();
     }
@@ -2754,37 +3530,38 @@ function createSampleDrugData() {
         { drugCode: 'MORPH10', drugName: 'Morphine 10mg', group: 'Narcotic', had: 'High', status: 'Active' },
         { drugCode: 'METRO200', drugName: 'Metronidazole 200mg', group: 'Antibiotic', had: 'Regular', status: 'Inactive' }
     ];
-    
+
     console.log('Sample drug data created:', drugListData.length, 'items');
-    
+
     // ทำความสะอาดและอัปเดต globalDrugList
     globalDrugList = cleanDrugData(drugListData);
-    
+
     renderDrugTable();
     updateDrugStats();
-    
+    setupSearchableDropdowns();
+
     // แสดงรายการ HAD จากข้อมูลตัวอย่าง
     displayHADListFromDatabase(globalDrugList);
-    
+
     showNotification('ใช้ข้อมูลตัวอย่าง - กรุณาตั้งค่า API หรือ Apps Script ให้ถูกต้อง', 'info');
 }
 
 // ฟังก์ชันแสดงรายการ HAD จากฐานข้อมูล
 function displayHADListFromDatabase(drugList) {
     console.log('🚨 === รายการ High Alert Drugs (HAD) จากฐานข้อมูล ===');
-    
+
     // กรองเฉพาะยา HAD
     const hadDrugs = drugList.filter(drug => drug.had === 'High' && drug.status === 'Active');
-    
+
     if (hadDrugs.length === 0) {
         console.log('❌ ไม่พบรายการ HAD ในฐานข้อมูล');
         showNotification('ไม่พบรายการ High Alert Drugs ในฐานข้อมูล', 'warning');
         return;
     }
-    
+
     console.log(`🎯 พบ High Alert Drugs จำนวน: ${hadDrugs.length} รายการ`);
     console.log('');
-    
+
     // จัดกลุ่มตาม group
     const groupedHAD = {};
     hadDrugs.forEach(drug => {
@@ -2793,7 +3570,7 @@ function displayHADListFromDatabase(drugList) {
         }
         groupedHAD[drug.group].push(drug);
     });
-    
+
     // แสดงรายการแยกตามกลุ่ม
     Object.keys(groupedHAD).forEach(group => {
         console.log(`📂 กลุ่ม: ${group} (${groupedHAD[group].length} รายการ)`);
@@ -2802,19 +3579,19 @@ function displayHADListFromDatabase(drugList) {
         });
         console.log('');
     });
-    
+
     // แสดงสรุป
     console.log('📊 สรุปรายการ HAD:');
     console.log(`   - รวมทั้งหมด: ${hadDrugs.length} รายการ`);
     console.log(`   - แยกเป็น: ${Object.keys(groupedHAD).length} กลุ่ม`);
     console.log(`   - กลุ่มยา: ${Object.keys(groupedHAD).join(', ')}`);
-    
+
     // แสดงการแจ้งเตือน
     showNotification(`🚨 พบ High Alert Drugs: ${hadDrugs.length} รายการ แยกเป็น ${Object.keys(groupedHAD).length} กลุ่ม`, 'warning');
-    
+
     // อัปเดต global list สำหรับ HAD detection
     globalDrugList = drugList;
-    
+
     return hadDrugs;
 }
 
@@ -2824,7 +3601,7 @@ function cleanDrugData(drugList) {
         console.warn('DrugList is not an array:', drugList);
         return [];
     }
-    
+
     return drugList.map(drug => {
         // ตรวจสอบและแปลงข้อมูลให้เป็น string
         const cleanedDrug = {
@@ -2832,15 +3609,20 @@ function cleanDrugData(drugList) {
             drugName: drug.drugName ? String(drug.drugName).trim() : '',
             group: drug.group ? String(drug.group).trim() : '',
             had: drug.had ? String(drug.had).trim() : 'Regular',
-            status: drug.status ? String(drug.status).trim() : 'Active'
+            status: drug.status ? String(drug.status).trim() : 'Active',
+            unit: drug.unit ? String(drug.unit).trim() : '',
+            strength: drug.strength ? String(drug.strength).trim() : '',
+            dosageForm: drug.dosageForm ? String(drug.dosageForm).trim() : '',
+            tmtCode: drug.tmtCode ? String(drug.tmtCode).trim() : '',
+            unitPrice: drug.unitPrice || 0
         };
-        
+
         // ตรวจสอบข้อมูลที่จำเป็น
         if (!cleanedDrug.drugCode && !cleanedDrug.drugName) {
             console.warn('Invalid drug data:', drug);
             return null;
         }
-        
+
         return cleanedDrug;
     }).filter(drug => drug !== null); // ลบรายการที่ไม่ถูกต้อง
 }
@@ -2848,116 +3630,91 @@ function cleanDrugData(drugList) {
 // ฟังก์ชันแสดงรายการ HAD สำหรับเรียกจากปุ่ม
 function showHADList() {
     console.log('🚨 === แสดงรายการ High Alert Drugs ===');
-    
+
     // ใช้ข้อมูลจาก globalDrugList หรือ drugListData
-    const drugList = globalDrugList.length > 0 ? globalDrugList : 
-                    (window.drugListData && window.drugListData.length > 0 ? window.drugListData : []);
-    
+    const drugList = globalDrugList.length > 0 ? globalDrugList :
+        (window.drugListData && window.drugListData.length > 0 ? window.drugListData : []);
+
     if (drugList.length === 0) {
         console.log('❌ ไม่มีข้อมูลยาในระบบ - กรุณาโหลดข้อมูลยาก่อน');
         showNotification('ไม่มีข้อมูลยาในระบบ กรุณาโหลดรายการยาก่อน', 'warning');
         return;
     }
-    
+
     displayHADListFromDatabase(drugList);
 }
 
 // Form submission fallback for loading drug list
 async function loadDrugListViaForm() {
-    return new Promise((resolve) => {
-        // For loading data, we'll create a popup window that communicates back
-        const popup = window.open('', '_blank', 'width=600,height=400');
-        
-        if (!popup) {
-            resolve(false);
-            return;
-        }
-        
-        popup.document.write(`
-            <html>
-            <head><title>Loading Drug List...</title></head>
-            <body>
-                <h3>กำลังโหลดรายการยา...</h3>
-                <form id="drugListForm" method="POST" action="${googleSheetsConfig.webAppUrl}">
-                    <input type="hidden" name="payload" value='{"action":"getDrugList","drugSheetName":"${googleSheetsConfig.drugSheetName || 'Drug_List'}"}'>
-                </form>
-                <script>
-                    document.getElementById('drugListForm').submit();
-                </script>
-            </body>
-            </html>
-        `);
-        
-        // Close popup after a delay and assume partial success
-        setTimeout(() => {
-            if (popup && !popup.closed) {
-                popup.close();
-            }
-            // For form submission, we can't get the response directly
-            // So we'll fallback to API method
-            resolve(false);
-        }, 3000);
-    });
+    // This approach is unreliable and has security concerns with popups
+    // Return false to fall through to API method
+    return false;
 }
 
 function renderDrugTable() {
     const tbody = document.getElementById('drugTableBody');
-    
+    if (!tbody) return;
+
     if (drugListData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">ไม่มีรายการยา</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">ไม่มีรายการยา</td></tr>';
         return;
     }
-    
+
     let filteredData = drugListData;
-    
+
     // Apply filters
     const searchTerm = document.getElementById('searchDrug')?.value.toLowerCase() || '';
     const groupFilter = document.getElementById('filterGroup')?.value || '';
     const hadFilter = document.getElementById('filterHAD')?.value || '';
-    
+
     if (searchTerm) {
-        filteredData = filteredData.filter(drug => 
+        filteredData = filteredData.filter(drug =>
             drug.drugCode.toLowerCase().includes(searchTerm) ||
             drug.drugName.toLowerCase().includes(searchTerm)
         );
     }
-    
+
     if (groupFilter) {
         filteredData = filteredData.filter(drug => drug.group === groupFilter);
     }
-    
+
     if (hadFilter) {
         filteredData = filteredData.filter(drug => drug.had === hadFilter);
     }
-    
-    tbody.innerHTML = filteredData.map(drug => `
+
+    tbody.innerHTML = filteredData.map(drug => {
+        const canManage = hasRole('admin', 'supervisor', 'pharmacist');
+        const safeDrugCode = escapeHtml(drug.drugCode);
+        return `
         <tr>
-            <td><strong>${drug.drugCode}</strong></td>
-            <td>${drug.drugName}</td>
-            <td><span class="tag">${drug.group}</span></td>
+            <td><strong>${safeDrugCode}</strong></td>
+            <td>${escapeHtml(drug.drugName)}</td>
+            <td><span class="tag">${escapeHtml(drug.group)}</span></td>
             <td>
                 <span class="tag ${drug.had === 'High' ? 'tag-danger' : 'tag-info'}">
-                    ${drug.had}
+                    ${escapeHtml(drug.had)}
                 </span>
             </td>
             <td>
                 <span class="tag ${getStatusTagClass(drug.status)}">
-                    ${drug.status}
+                    ${escapeHtml(drug.status)}
                 </span>
             </td>
+            <td>${escapeHtml(drug.strength || '-')}</td>
+            <td>${escapeHtml(drug.dosageForm || '-')}</td>
+            <td>${escapeHtml(drug.unit || '-')}</td>
             <td>
-                <button class="btn btn-sm btn-secondary" onclick="editDrug('${drug.drugCode}')" title="แก้ไข">
+                ${canManage ? `
+                <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteDrug('${drug.drugCode}')" title="ลบ">
+                <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ลบ">
                     <i class="fas fa-trash"></i>
-                </button>
+                </button>` : '<span class="text-muted">-</span>'}
             </td>
         </tr>
-    `).join('');
-    
-    // Populate drug dropdowns for error reporting form
-    populateDrugDropdowns();
+    `}).join('');
+
 }
 
 function getStatusTagClass(status) {
@@ -2974,11 +3731,12 @@ function updateDrugStats() {
     const hadDrugs = drugListData.filter(drug => drug.had === 'High').length;
     const activeDrugs = drugListData.filter(drug => drug.status === 'Active').length;
     const inactiveDrugs = drugListData.filter(drug => drug.status !== 'Active').length;
-    
-    document.getElementById('totalDrugs').textContent = total;
-    document.getElementById('hadDrugs').textContent = hadDrugs;
-    document.getElementById('activeDrugs').textContent = activeDrugs;
-    document.getElementById('inactiveDrugs').textContent = inactiveDrugs;
+
+    const el = (id) => document.getElementById(id);
+    if (el('totalDrugs')) el('totalDrugs').textContent = total;
+    if (el('hadDrugs')) el('hadDrugs').textContent = hadDrugs;
+    if (el('activeDrugs')) el('activeDrugs').textContent = activeDrugs;
+    if (el('inactiveDrugs')) el('inactiveDrugs').textContent = inactiveDrugs;
 }
 
 function filterDrugs() {
@@ -3007,7 +3765,7 @@ function filterDrugsModern() {
     }
 
     if (drugListData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">ไม่มีรายการยา</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">ไม่มีรายการยา</td></tr>';
         updateResultCount(0);
         return;
     }
@@ -3078,16 +3836,16 @@ function filterDrugsModern() {
 
             return { drug, score };
         })
-        .filter(item => item !== null)
-        .sort((a, b) => b.score - a.score)
-        .map(item => item.drug);
+            .filter(item => item !== null)
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.drug);
 
         filteredData = scored;
     }
 
     // Render results
     if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding: 40px;"><i class="fas fa-search" style="font-size: 48px; color: #ddd; display: block; margin-bottom: 10px;"></i><div style="color: #999;">ไม่พบรายการยาที่ตรงกับการค้นหา</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding: 40px;"><i class="fas fa-search" style="font-size: 48px; color: #ddd; display: block; margin-bottom: 10px;"></i><div style="color: #999;">ไม่พบรายการยาที่ตรงกับการค้นหา</div></td></tr>';
     } else {
         tbody.innerHTML = filteredData.map(drug => {
             // Highlight search term in results
@@ -3099,28 +3857,30 @@ function filterDrugsModern() {
                 displayName = highlightText(drug.drugName, searchTerm);
             }
 
+            const safeDrugCode = escapeHtml(drug.drugCode);
             return `
                 <tr class="drug-row">
                     <td><strong>${displayCode}</strong></td>
                     <td>${displayName}</td>
-                    <td><span class="tag">${drug.group}</span></td>
+                    <td><span class="tag">${escapeHtml(drug.group)}</span></td>
                     <td>
                         <span class="tag ${drug.had === 'High' ? 'tag-danger' : 'tag-info'}">
-                            ${drug.had}
+                            ${escapeHtml(drug.had)}
                         </span>
                     </td>
                     <td>
                         <span class="tag ${getStatusTagClass(drug.status)}">
-                            ${drug.status}
+                            ${escapeHtml(drug.status)}
                         </span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-secondary" onclick="editDrug('${drug.drugCode}')" title="แก้ไข">
+                        ${hasRole('admin', 'supervisor', 'pharmacist') ? `
+                        <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteDrug('${drug.drugCode}')" title="ลบ">
+                        <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ลบ">
                             <i class="fas fa-trash"></i>
-                        </button>
+                        </button>` : '<span class="text-muted">-</span>'}
                     </td>
                 </tr>
             `;
@@ -3128,7 +3888,6 @@ function filterDrugsModern() {
     }
 
     updateResultCount(filteredData.length);
-    populateDrugDropdowns();
 }
 
 // Fuzzy matching helper for drug search
@@ -3183,6 +3942,10 @@ function resetDrugFilters() {
 }
 
 function showAddDrugForm() {
+    if (!hasRole('admin', 'supervisor', 'pharmacist')) {
+        showNotification('คุณไม่มีสิทธิ์เพิ่มรายการยา (ต้องเป็นเภสัชกรขึ้นไป)', 'warning');
+        return;
+    }
     document.getElementById('addDrugForm').style.display = 'block';
     document.getElementById('drugCode').focus();
 }
@@ -3194,7 +3957,7 @@ function hideAddDrugForm() {
 
 async function handleDrugFormSubmit(event) {
     event.preventDefault();
-    
+
     const formData = new FormData(event.target);
     const drugData = {
         action: 'addDrug',
@@ -3202,41 +3965,51 @@ async function handleDrugFormSubmit(event) {
         drugName: formData.get('drugName'),
         group: formData.get('drugGroup'),
         had: formData.get('hadStatus'),
-        status: formData.get('drugStatus')
+        status: formData.get('drugStatus'),
+        unit: formData.get('drugUnit') || '',
+        strength: formData.get('drugStrength') || '',
+        dosageForm: formData.get('drugDosageForm') || '',
+        tmtCode: formData.get('drugTmtCode') || '',
+        unitPrice: parseFloat(formData.get('drugUnitPrice')) || 0
     };
-    
+
     try {
         if (!googleSheetsConfig.webAppUrl) {
             // Demo Mode: จำลองการเพิ่มยาใหม่
             console.log('Demo Mode: เพิ่มยาใหม่', drugData);
-            
+
             // Check for duplicate in demo data
             if (globalDrugList.some(drug => drug.drugCode === drugData.drugCode)) {
                 showNotification('รหัสยาซ้ำ: ' + drugData.drugCode + ' มีอยู่ในระบบแล้ว (โหมดทดสอบ)', 'error');
                 return;
             }
-            
+
             // Add to demo data
             globalDrugList.push({
                 drugCode: drugData.drugCode,
                 drugName: drugData.drugName,
                 group: drugData.group,
                 had: drugData.had,
-                status: drugData.status
+                status: drugData.status,
+                unit: drugData.unit,
+                strength: drugData.strength,
+                dosageForm: drugData.dosageForm,
+                tmtCode: drugData.tmtCode,
+                unitPrice: drugData.unitPrice
             });
-            
+
             showNotification('✅ เพิ่มรายการยาเรียบร้อย (โหมดทดสอบ)', 'success');
             hideAddDrugForm();
             setupDrugSearchInputs(); // Refresh drug search
             return;
         }
-        
+
         // Check for duplicate drug code locally first
         if (drugListData.some(drug => drug.drugCode === drugData.drugCode)) {
             showNotification('รหัสยาซ้ำ: ' + drugData.drugCode + ' มีอยู่ในระบบแล้ว', 'error');
             return;
         }
-        
+
         // Use FormData submission to avoid CORS preflight issues
         try {
             const formData = new FormData();
@@ -3246,27 +4019,32 @@ async function handleDrugFormSubmit(event) {
             formData.append('group', drugData.group);
             formData.append('had', drugData.had);
             formData.append('status', drugData.status);
-            
+
             const response = await fetch(googleSheetsConfig.webAppUrl, {
                 method: 'POST',
                 body: formData  // ใช้ FormData แทน JSON เพื่อหลีกเลี่ยง CORS preflight
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 showNotification('เพิ่มรายการยาเรียบร้อย', 'success');
                 hideAddDrugForm();
-                
+
                 // Add to local data
                 drugListData.push({
                     drugCode: drugData.drugCode,
                     drugName: drugData.drugName,
                     group: drugData.group,
                     had: drugData.had,
-                    status: drugData.status
+                    status: drugData.status,
+                    unit: drugData.unit,
+                    strength: drugData.strength,
+                    dosageForm: drugData.dosageForm,
+                    tmtCode: drugData.tmtCode,
+                    unitPrice: drugData.unitPrice
                 });
-                
+
                 renderDrugTable();
                 updateDrugStats();
                 return;
@@ -3275,29 +4053,34 @@ async function handleDrugFormSubmit(event) {
             }
         } catch (fetchError) {
             console.log('Fetch failed, trying form submission fallback:', fetchError);
-            
+
             // Fallback: Use form submission to bypass CORS
             const success = await submitDrugViaForm(drugData);
             if (success) {
                 showNotification('เพิ่มรายการยาเรียบร้อย', 'success');
                 hideAddDrugForm();
-                
+
                 // Add to local data
                 drugListData.push({
                     drugCode: drugData.drugCode,
                     drugName: drugData.drugName,
                     group: drugData.group,
                     had: drugData.had,
-                    status: drugData.status
+                    status: drugData.status,
+                    unit: drugData.unit,
+                    strength: drugData.strength,
+                    dosageForm: drugData.dosageForm,
+                    tmtCode: drugData.tmtCode,
+                    unitPrice: drugData.unitPrice
                 });
-                
+
                 renderDrugTable();
                 updateDrugStats();
             } else {
                 throw new Error('Both fetch and form submission failed');
             }
         }
-        
+
     } catch (error) {
         console.error('Error adding drug:', error);
         showNotification('เกิดข้อผิดพลาดในการเพิ่มรายการยา: ' + error.message, 'error');
@@ -3312,19 +4095,19 @@ async function submitDrugViaForm(drugData) {
         form.action = googleSheetsConfig.webAppUrl;
         form.target = '_blank';
         form.style.display = 'none';
-        
+
         const payloadInput = document.createElement('input');
         payloadInput.type = 'hidden';
         payloadInput.name = 'payload';
         payloadInput.value = JSON.stringify(drugData);
-        
+
         form.appendChild(payloadInput);
         document.body.appendChild(form);
-        
+
         // Submit form and assume success
         form.submit();
         document.body.removeChild(form);
-        
+
         // Assume success after a short delay
         setTimeout(() => resolve(true), 1000);
     });
@@ -3339,16 +4122,16 @@ function editDrug(drugCode) {
         document.getElementById('drugGroup').value = drug.group;
         document.getElementById('hadStatus').value = drug.had;
         document.getElementById('drugStatus').value = drug.status;
-        
+
         // Make drug code readonly for editing
         document.getElementById('drugCode').readOnly = true;
-        
+
         showAddDrugForm();
-        
+
         // Change form title and button text
         document.querySelector('#addDrugForm h3').textContent = 'แก้ไขรายการยา';
         document.querySelector('#drugForm button[type="submit"]').innerHTML = '<i class="fas fa-save"></i> อัปเดตยา';
-        
+
         showNotification('กรุณาแก้ไขข้อมูลและบันทึก', 'info');
     }
 }
@@ -3360,7 +4143,7 @@ function deleteDrug(drugCode) {
         renderDrugTable();
         updateDrugStats();
         showNotification('ลบรายการยาเรียบร้อย', 'success');
-        
+
         // Note: Real deletion would require updating Google Sheets
         // For now, we only remove from local display
     }
@@ -3394,7 +4177,7 @@ let analyticsData = {
 // Main analytics generation function
 function generateAdvancedAnalytics(data) {
     console.log('Generating advanced analytics for data:', data);
-    
+
     if (!data || data.length === 0) {
         resetAllAnalytics();
         return;
@@ -3402,10 +4185,10 @@ function generateAdvancedAnalytics(data) {
 
     // Filter out header row and empty rows
     const processedData = data.filter(row => {
-        return row && row[0] && row[1] && 
-               row[0].toString().trim() !== '' && 
-               row[1].toString().trim() !== '' &&
-               !row[0].toString().toLowerCase().includes('timestamp');
+        return row && row[0] && row[1] &&
+            row[0].toString().trim() !== '' &&
+            row[1].toString().trim() !== '' &&
+            !row[0].toString().toLowerCase().includes('timestamp');
     });
 
     if (processedData.length === 0) {
@@ -3415,16 +4198,19 @@ function generateAdvancedAnalytics(data) {
 
     // Process data for analytics
     processAnalyticsData(processedData);
-    
-    // Generate charts
+
+    // Pre-compute analytics-filtered data once for all charts
+    const analyticsFilteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+
+    // Generate charts (pass pre-filtered data to avoid re-filtering)
     generateProcessChart();
-    generateErrorChartByProcess();
-    generateCauseChartByProcess();
-    generateDrugChartByProcess();
+    generateErrorChartByProcess(analyticsFilteredData);
+    generateCauseChartByProcess(analyticsFilteredData);
+    generateDrugChartByProcess(analyticsFilteredData);
     updateLocationRanking();
     updateTimeDistribution();
     generateMonthlyTrendChart();
-    
+
     console.log('Analytics generation completed');
 }
 
@@ -3441,23 +4227,23 @@ function processAnalyticsData(data) {
     };
 
     const monthlyCount = {};
-    
+
     data.forEach(row => {
         if (!row || !row[0]) return;
-        
+
         try {
             // Process distribution
             const process = (row[5] || 'ไม่ระบุ').toString().trim();
             analyticsData.processData[process] = (analyticsData.processData[process] || 0) + 1;
-            
+
             // Cause distribution
             const cause = (row[7] || 'ไม่ระบุ').toString().trim();
             analyticsData.causeData[cause] = (analyticsData.causeData[cause] || 0) + 1;
-            
+
             // Location distribution
             const location = (row[4] || 'ไม่ระบุ').toString().trim();
             analyticsData.locationData[location] = (analyticsData.locationData[location] || 0) + 1;
-            
+
             // Time distribution - ใช้ข้อมูลจากคอลัมน์เวรโดยตรง
             const shift = (row[2] || '').toString().trim(); // คอลัมน์ C (index 2) ตามรูปภาพ Google Sheets
             if (shift) {
@@ -3469,7 +4255,7 @@ function processAnalyticsData(data) {
                     analyticsData.timeData.night++;
                 }
             }
-            
+
             // Monthly trend - ใช้วันที่เกิดเหตุการณ์
             const eventDateStr = (row[0] || '').toString().trim();
             if (eventDateStr) {
@@ -3483,7 +4269,7 @@ function processAnalyticsData(data) {
             console.warn('Error processing row for analytics:', e, row);
         }
     });
-    
+
     // Convert monthly data to array
     analyticsData.monthlyTrend = Object.entries(monthlyCount)
         .sort(([a], [b]) => a.localeCompare(b))
@@ -3497,7 +4283,7 @@ function generateProcessChart() {
     if (!canvas) return;
 
     const dataObj = analyticsData.processData || {};
-    const labels = Object.keys(dataObj).sort((a,b)=> dataObj[b]-dataObj[a]);
+    const labels = Object.keys(dataObj).sort((a, b) => dataObj[b] - dataObj[a]);
     const data = labels.map(l => dataObj[l]);
 
     // Update summary
@@ -3518,8 +4304,8 @@ function generateProcessChart() {
     }
 
     // Colors
-    const palette = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#E91E63','#795548'];
-    const backgroundColors = labels.map((_,i) => palette[i % palette.length]);
+    const palette = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#E91E63', '#795548'];
+    const backgroundColors = labels.map((_, i) => palette[i % palette.length]);
 
     processChartInstance = new Chart(canvas, {
         type: 'bar',
@@ -3545,7 +4331,7 @@ function generateProcessChart() {
                 }
             },
             scales: {
-                x: { beginAtZero: true, ticks: { precision:0 } },
+                x: { beginAtZero: true, ticks: { precision: 0 } },
                 y: { ticks: { autoSkip: false } }
             }
         }
@@ -3556,13 +4342,13 @@ function generateProcessChart() {
 function generateCauseChart() {
     const canvas = document.getElementById('causeChart');
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     const causes = Object.keys(analyticsData.causeData);
     const counts = Object.values(analyticsData.causeData);
-    
+
     if (causes.length === 0) {
         drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลสาเหตุ');
         return;
@@ -3580,27 +4366,27 @@ function generateCauseChart() {
     const maxCount = Math.max(...sortedData.map(item => item.count));
     const barWidth = (canvas.width - 100) / sortedData.length;
     const maxBarHeight = canvas.height - 100;
-    
+
     sortedData.forEach((item, index) => {
         const barHeight = (item.count / maxCount) * maxBarHeight;
         const x = 50 + (index * barWidth);
         const y = canvas.height - 50 - barHeight;
-        
+
         // Create gradient
         const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
         gradient.addColorStop(0, '#36A2EB');
         gradient.addColorStop(1, '#1E88E5');
-        
+
         // Draw bar
         ctx.fillStyle = gradient;
         ctx.fillRect(x, y, barWidth - 15, barHeight);
-        
+
         // Draw count on top of bar
         ctx.fillStyle = '#333';
         ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(item.count, x + (barWidth - 15) / 2, y - 5);
-        
+
         // Draw cause label (rotated)
         ctx.save();
         ctx.translate(x + (barWidth - 15) / 2, canvas.height - 25);
@@ -3611,7 +4397,7 @@ function generateCauseChart() {
         ctx.fillText(labelText, 0, 0);
         ctx.restore();
     });
-    
+
     // Draw axes
     ctx.strokeStyle = '#ccc';
     ctx.lineWidth = 1;
@@ -3626,12 +4412,12 @@ function generateCauseChart() {
 function filterCauseByProcess() {
     const processSelect = document.getElementById('processFilter');
     if (!processSelect) return;
-    
+
     processFilter = processSelect.value;
     analyticsFilters.process = processSelect.value; // Sync with analytics filters
     errorProcessFilter = processSelect.value; // Sync with error process filter
     drugProcessFilter = processSelect.value; // Sync with drug process filter
-    
+
     // Update other dropdowns
     const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
     const errorProcessFilterEl = document.getElementById('errorProcessFilter');
@@ -3639,7 +4425,7 @@ function filterCauseByProcess() {
     if (analyticsProcessSelect) analyticsProcessSelect.value = processFilter;
     if (errorProcessFilterEl) errorProcessFilterEl.value = processFilter;
     if (drugProcessFilterEl) drugProcessFilterEl.value = processFilter;
-    
+
     // Update UI to show selected process
     const selectedProcessEl = document.getElementById('selectedProcess');
     const selectedErrorProcessEl = document.getElementById('selectedErrorProcess');
@@ -3653,25 +4439,28 @@ function filterCauseByProcess() {
     if (selectedDrugProcessEl) {
         selectedDrugProcessEl.textContent = processFilter === 'all' ? 'ทุกกระบวนการ' : processFilter;
     }
-    
+
     // Update analytics filter summary
     updateAnalyticsFilterSummary();
-    
+
+    // Pre-compute filtered data once for all charts
+    const preFiltered = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+
     // Regenerate all charts with process filter
-    generateCauseChartByProcess();
-    generateErrorChartByProcess();
-    generateDrugChartByProcess();
+    generateCauseChartByProcess(preFiltered);
+    generateErrorChartByProcess(preFiltered);
+    generateDrugChartByProcess(preFiltered);
 }
 
 // Generate cause chart filtered by process and show top 5
-function generateCauseChartByProcess() {
+function generateCauseChartByProcess(preFilteredData) {
     // Render top 5 causes using Chart.js
     const canvas = document.getElementById('causeChart');
     if (!canvas) return;
 
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+    let filteredData = preFilteredData || applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (processFilter !== 'all') {
-        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === processFilter);
+        filteredData = filteredData.filter(row => ((row[5] || '').toString().trim()) === processFilter);
     }
 
     const causeCounts = {};
@@ -3680,18 +4469,18 @@ function generateCauseChartByProcess() {
         if (cause) causeCounts[cause] = (causeCounts[cause] || 0) + 1;
     });
 
-    const sorted = Object.entries(causeCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
-    const labels = sorted.map(s=>s[0]);
-    const data = sorted.map(s=>s[1]);
+    const sorted = Object.entries(causeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const labels = sorted.map(s => s[0]);
+    const data = sorted.map(s => s[1]);
 
     const topCauseEl = document.getElementById('topCause');
     const causeItemCountEl = document.getElementById('causeItemCount');
     if (topCauseEl) topCauseEl.textContent = labels[0] || '-';
-    if (causeItemCountEl) causeItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
+    if (causeItemCountEl) causeItemCountEl.textContent = data.reduce((a, b) => a + b, 0) || '0';
 
-    if (causeChartInstance) { try { causeChartInstance.destroy(); } catch(e){} causeChartInstance = null; }
+    if (causeChartInstance) { try { causeChartInstance.destroy(); } catch (e) { } causeChartInstance = null; }
 
-    const palette = ['#FF6B6B','#FF9F43','#26D0CE','#74C0FC','#9C27B0'];
+    const palette = ['#FF6B6B', '#FF9F43', '#26D0CE', '#74C0FC', '#9C27B0'];
 
     causeChartInstance = new Chart(canvas, {
         type: 'bar',
@@ -3706,11 +4495,11 @@ function generateCauseChartByProcess() {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) { return context.formattedValue + ' รายการ'; }
+                        label: function (context) { return context.formattedValue + ' รายการ'; }
                     }
                 }
             },
-            scales: { x: { beginAtZero:true, ticks:{precision:0} }, y: { ticks:{autoSkip:false} } }
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { ticks: { autoSkip: false } } }
         }
     });
 }
@@ -3719,12 +4508,12 @@ function generateCauseChartByProcess() {
 function filterErrorByProcess() {
     const errorProcessSelect = document.getElementById('errorProcessFilter');
     if (!errorProcessSelect) return;
-    
+
     errorProcessFilter = errorProcessSelect.value;
     analyticsFilters.process = errorProcessSelect.value; // Sync with analytics filters
     processFilter = errorProcessSelect.value; // Sync with cause process filter
     drugProcessFilter = errorProcessSelect.value; // Sync with drug process filter
-    
+
     // Update other dropdowns
     const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
     const causeProcessFilter = document.getElementById('processFilter');
@@ -3732,7 +4521,7 @@ function filterErrorByProcess() {
     if (analyticsProcessSelect) analyticsProcessSelect.value = errorProcessFilter;
     if (causeProcessFilter) causeProcessFilter.value = errorProcessFilter;
     if (drugProcessFilterEl) drugProcessFilterEl.value = errorProcessFilter;
-    
+
     // Update UI to show selected process
     const selectedErrorProcessEl = document.getElementById('selectedErrorProcess');
     const selectedProcessEl = document.getElementById('selectedProcess');
@@ -3746,25 +4535,28 @@ function filterErrorByProcess() {
     if (selectedDrugProcessEl) {
         selectedDrugProcessEl.textContent = errorProcessFilter === 'all' ? 'ทุกกระบวนการ' : errorProcessFilter;
     }
-    
+
     // Update analytics filter summary
     updateAnalyticsFilterSummary();
-    
+
+    // Pre-compute filtered data once for all charts
+    const preFiltered = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+
     // Regenerate all charts with process filter
-    generateErrorChartByProcess();
-    generateCauseChartByProcess();
-    generateDrugChartByProcess();
+    generateErrorChartByProcess(preFiltered);
+    generateCauseChartByProcess(preFiltered);
+    generateDrugChartByProcess(preFiltered);
 }
 
 // Generate error chart filtered by process and show top 5
-function generateErrorChartByProcess() {
+function generateErrorChartByProcess(preFilteredData) {
     // Render top 5 errors using Chart.js
     const canvas = document.getElementById('errorChart');
     if (!canvas) return;
 
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+    let filteredData = preFilteredData || applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (errorProcessFilter !== 'all') {
-        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === errorProcessFilter);
+        filteredData = filteredData.filter(row => ((row[5] || '').toString().trim()) === errorProcessFilter);
     }
 
     const errorCounts = {};
@@ -3773,29 +4565,29 @@ function generateErrorChartByProcess() {
         if (err) errorCounts[err] = (errorCounts[err] || 0) + 1;
     });
 
-    const sorted = Object.entries(errorCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
-    const labels = sorted.map(s=>s[0]);
-    const data = sorted.map(s=>s[1]);
+    const sorted = Object.entries(errorCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const labels = sorted.map(s => s[0]);
+    const data = sorted.map(s => s[1]);
 
     const topErrorEl = document.getElementById('topError');
     const errorItemCountEl = document.getElementById('errorItemCount');
     if (topErrorEl) topErrorEl.textContent = labels[0] || '-';
-    if (errorItemCountEl) errorItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
+    if (errorItemCountEl) errorItemCountEl.textContent = data.reduce((a, b) => a + b, 0) || '0';
 
-    if (errorChartInstance) { try { errorChartInstance.destroy(); } catch(e){} errorChartInstance = null; }
+    if (errorChartInstance) { try { errorChartInstance.destroy(); } catch (e) { } errorChartInstance = null; }
 
-    const palette = ['#FF9800','#2196F3','#4CAF50','#9C27B0','#607D8B'];
+    const palette = ['#FF9800', '#2196F3', '#4CAF50', '#9C27B0', '#607D8B'];
     errorChartInstance = new Chart(canvas, {
         type: 'bar',
-        data: { labels, datasets: [{ data, backgroundColor: palette.slice(0, labels.length), borderRadius:8 }] },
+        data: { labels, datasets: [{ data, backgroundColor: palette.slice(0, labels.length), borderRadius: 8 }] },
         options: {
             indexAxis: 'y',
             responsive: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: function(context) { return context.formattedValue + ' รายการ'; } } }
+                tooltip: { callbacks: { label: function (context) { return context.formattedValue + ' รายการ'; } } }
             },
-            scales: { x: { beginAtZero:true, ticks:{precision:0} }, y: { ticks:{autoSkip:false} } }
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { ticks: { autoSkip: false } } }
         }
     });
 }
@@ -3804,12 +4596,12 @@ function generateErrorChartByProcess() {
 function filterDrugByProcess() {
     const drugProcessSelect = document.getElementById('drugProcessFilter');
     if (!drugProcessSelect) return;
-    
+
     drugProcessFilter = drugProcessSelect.value;
     analyticsFilters.process = drugProcessSelect.value; // Sync with analytics filters
     processFilter = drugProcessSelect.value; // Sync with cause process filter
     errorProcessFilter = drugProcessSelect.value; // Sync with error process filter
-    
+
     // Update other dropdowns
     const analyticsProcessSelect = document.getElementById('analyticsProcessFilter');
     const causeProcessFilter = document.getElementById('processFilter');
@@ -3817,7 +4609,7 @@ function filterDrugByProcess() {
     if (analyticsProcessSelect) analyticsProcessSelect.value = drugProcessFilter;
     if (causeProcessFilter) causeProcessFilter.value = drugProcessFilter;
     if (errorProcessFilterEl) errorProcessFilterEl.value = drugProcessFilter;
-    
+
     // Update UI to show selected process
     const selectedDrugProcessEl = document.getElementById('selectedDrugProcess');
     const selectedProcessEl = document.getElementById('selectedProcess');
@@ -3831,24 +4623,27 @@ function filterDrugByProcess() {
     if (selectedErrorProcessEl) {
         selectedErrorProcessEl.textContent = drugProcessFilter === 'all' ? 'ทุกกระบวนการ' : drugProcessFilter;
     }
-    
+
     // Update analytics filter summary
     updateAnalyticsFilterSummary();
-    
+
+    // Pre-compute filtered data once for all charts
+    const preFiltered = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+
     // Regenerate all charts with process filter
-    generateDrugChartByProcess();
-    generateCauseChartByProcess();
-    generateErrorChartByProcess();
+    generateDrugChartByProcess(preFiltered);
+    generateCauseChartByProcess(preFiltered);
+    generateErrorChartByProcess(preFiltered);
 }
 
 // Generate drug chart filtered by process and show top 5 correct items
-function generateDrugChartByProcess() {
+function generateDrugChartByProcess(preFilteredData) {
     const canvas = document.getElementById('drugChart');
     if (!canvas) return;
 
-    let filteredData = applyAnalyticsFiltersToData(lastUserFilteredData || []);
+    let filteredData = preFilteredData || applyAnalyticsFiltersToData(lastUserFilteredData || []);
     if (drugProcessFilter !== 'all') {
-        filteredData = filteredData.filter(row => ((row[5]||'').toString().trim()) === drugProcessFilter);
+        filteredData = filteredData.filter(row => ((row[5] || '').toString().trim()) === drugProcessFilter);
     }
 
     const drugCounts = {};
@@ -3857,18 +4652,18 @@ function generateDrugChartByProcess() {
         if (correctDrug) drugCounts[correctDrug] = (drugCounts[correctDrug] || 0) + 1;
     });
 
-    const sorted = Object.entries(drugCounts).sort((a,b)=> b[1]-a[1]).slice(0,5);
-    const labels = sorted.map(s=>s[0]);
-    const data = sorted.map(s=>s[1]);
+    const sorted = Object.entries(drugCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const labels = sorted.map(s => s[0]);
+    const data = sorted.map(s => s[1]);
 
     const topDrugEl = document.getElementById('topDrug');
     const drugItemCountEl = document.getElementById('drugItemCount');
     if (topDrugEl) topDrugEl.textContent = labels[0] || '-';
-    if (drugItemCountEl) drugItemCountEl.textContent = data.reduce((a,b)=>a+b,0) || '0';
+    if (drugItemCountEl) drugItemCountEl.textContent = data.reduce((a, b) => a + b, 0) || '0';
 
-    if (drugChartInstance) { try { drugChartInstance.destroy(); } catch(e){} drugChartInstance = null; }
+    if (drugChartInstance) { try { drugChartInstance.destroy(); } catch (e) { } drugChartInstance = null; }
 
-    const palette = ['#9C27B0','#673AB7','#3F51B5','#2196F3','#4CAF50'];
+    const palette = ['#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#4CAF50'];
     drugChartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
@@ -3884,7 +4679,7 @@ function generateDrugChartByProcess() {
             responsive: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: function(context) { return context.formattedValue + ' รายการ'; } } }
+                tooltip: { callbacks: { label: function (context) { return context.formattedValue + ' รายการ'; } } }
             },
             scales: {
                 x: { beginAtZero: true, ticks: { precision: 0 } },
@@ -3900,7 +4695,7 @@ function updateLocationRanking() {
     if (!container) return;
 
     const locations = Object.entries(analyticsData.locationData)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([, a], [, b]) => b - a)
         .slice(0, 5);
 
     if (locations.length === 0) {
@@ -3920,7 +4715,7 @@ function updateLocationRanking() {
         <div class="ranking-item">
             <div class="rank-badge">${index + 1}</div>
             <div class="location-info">
-                <div class="location-name">${location}</div>
+                <div class="location-name">${escapeHtml(location)}</div>
                 <div class="location-count">${count} ครั้ง</div>
             </div>
         </div>
@@ -3931,12 +4726,12 @@ function updateLocationRanking() {
 function updateTimeDistribution() {
     const { morning, afternoon, night } = analyticsData.timeData;
     const total = morning + afternoon + night;
-    
+
     // Update counts
     document.getElementById('morningCount').textContent = morning;
     document.getElementById('afternoonCount').textContent = afternoon;
     document.getElementById('nightCount').textContent = night;
-    
+
     if (total === 0) {
         // Reset bars and percentages
         ['morning', 'afternoon', 'night'].forEach(time => {
@@ -3945,110 +4740,111 @@ function updateTimeDistribution() {
         });
         return;
     }
-    
+
     // Update bars and percentages with animation
     const morningPercent = ((morning / total) * 100).toFixed(1);
     const afternoonPercent = ((afternoon / total) * 100).toFixed(1);
     const nightPercent = ((night / total) * 100).toFixed(1);
-    
+
     // Animate the bars
     setTimeout(() => {
         document.getElementById('morningBar').style.width = `${morningPercent}%`;
         document.getElementById('afternoonBar').style.width = `${afternoonPercent}%`;
         document.getElementById('nightBar').style.width = `${nightPercent}%`;
     }, 100);
-    
+
     document.getElementById('morningPercent').textContent = `${morningPercent}%`;
     document.getElementById('afternoonPercent').textContent = `${afternoonPercent}%`;
     document.getElementById('nightPercent').textContent = `${nightPercent}%`;
-    
-    // Log detailed shift analysis
-    console.log(`📊 การกระจายตามเวรจาก Database:`);
-    console.log(`   เช้า: ${morning} ครั้ง (${morningPercent}%)`);
-    console.log(`   บ่าย: ${afternoon} ครั้ง (${afternoonPercent}%)`);
-    console.log(`   ดึก: ${night} ครั้ง (${nightPercent}%)`);
-    console.log(`   รวม: ${total} ครั้ง`);
+
+    // Call displayShiftInsights with the calculated data
+    displayShiftInsights(morning, afternoon, night, total);
 }
 
 // แสดงข้อมูลเชิงลึกของการกระจายตามเวร
 function displayShiftInsights(morningCount, afternoonCount, nightCount, totalCount) {
-    if (totalCount === 0) return;
-    
+    const shiftInsightElement = document.getElementById('shiftInsights');
+    if (!shiftInsightElement) return; // Ensure the element exists
+
+    if (totalCount === 0) {
+        shiftInsightElement.innerHTML = `<p>ไม่มีข้อมูลสำหรับวิเคราะห์เชิงลึก</p>`;
+        return;
+    }
+
     const morningPercent = (morningCount / totalCount) * 100;
     const afternoonPercent = (afternoonCount / totalCount) * 100;
     const nightPercent = (nightCount / totalCount) * 100;
-    
+
     // หาเวรที่มีปัญหามากที่สุดและน้อยที่สุด
     const shifts = [
         { name: 'เช้า', count: morningCount, percent: morningPercent },
         { name: 'บ่าย', count: afternoonCount, percent: afternoonPercent },
         { name: 'ดึก', count: nightCount, percent: nightPercent }
     ];
-    
+
     shifts.sort((a, b) => b.count - a.count);
-    
+
     const insights = [];
-    
+
     // วิเคราะห์เวรที่มีปัญหามากที่สุด
     if (shifts[0].count > 0) {
         insights.push(`เวร${shifts[0].name} มีข้อผิดพลาดมากที่สุด (${shifts[0].count} ครั้ง, ${shifts[0].percent.toFixed(1)}%)`);
     }
-    
+
     // วิเคราะห์ความแตกต่างระหว่างเวร
     const maxPercent = shifts[0].percent;
     const minPercent = shifts[2].percent;
     const difference = maxPercent - minPercent;
-    
+
     if (difference > 30) {
         insights.push(`ความแตกต่างระหว่างเวรสูง: ${difference.toFixed(1)}% (${shifts[0].name} vs ${shifts[2].name})`);
     } else if (difference < 10) {
         insights.push(`การกระจายข้อผิดพลาดระหว่างเวรค่อนข้างสมดุล`);
     }
-    
-    // แสดงผลลัพธ์ใน console สำหรับการ debug
-    console.log('=== การวิเคราะห์เวรเชิงลึก ===');
-    insights.forEach(insight => console.log(`📊 ${insight}`));
-    
-    // อัปเดต UI ถ้ามี element สำหรับแสดงข้อมูลเพิ่มเติม
-    const shiftInsightElement = document.getElementById('shiftInsights');
-    if (shiftInsightElement) {
-        shiftInsightElement.innerHTML = insights.map(insight => `<p><i class="fas fa-lightbulb"></i> ${insight}</p>`).join('');
-    }
+
+    // อัปเดต shiftInsightElement ที่ query ไว้ตั้งแต่ต้นฟังก์ชัน
+    shiftInsightElement.innerHTML = insights.map(insight => `<p><i class="fas fa-lightbulb"></i> ${insight}</p>`).join('');
 }
 
 // Generate monthly trend chart
 function generateMonthlyTrendChart() {
     const canvas = document.getElementById('trendChart');
     if (!canvas) return;
-    
+
+    // Destroy any existing Chart.js instance on this canvas
+    if (trendChartInstance) {
+        try { trendChartInstance.destroy(); } catch (e) { /* ignore */ }
+        trendChartInstance = null;
+    }
+
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     const trendData = analyticsData.monthlyTrend;
-    
+
     if (trendData.length === 0) {
         drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลแนวโน้ม');
         return;
     }
-    
+
     const months = trendData.map(([month]) => month);
     const counts = trendData.map(([, count]) => count);
     const maxCount = Math.max(...counts, 1);
-    
+
     // Update trend insights
     updateTrendInsights(months, counts);
-    
+
     const marginLeft = 60;
     const marginBottom = 60;
     const marginTop = 40;
     const marginRight = 40;
     const chartWidth = canvas.width - marginLeft - marginRight;
     const chartHeight = canvas.height - marginBottom - marginTop;
-    
+
     // Draw background grid
     ctx.strokeStyle = '#f0f0f0';
     ctx.lineWidth = 1;
-    
+
     // Horizontal grid lines
     for (let i = 0; i <= 5; i++) {
         const y = marginTop + (i * chartHeight / 5);
@@ -4057,7 +4853,7 @@ function generateMonthlyTrendChart() {
         ctx.lineTo(marginLeft + chartWidth, y);
         ctx.stroke();
     }
-    
+
     // Vertical grid lines
     for (let i = 0; i <= months.length - 1; i++) {
         const x = marginLeft + (i * chartWidth / (months.length - 1));
@@ -4066,7 +4862,7 @@ function generateMonthlyTrendChart() {
         ctx.lineTo(x, marginTop + chartHeight);
         ctx.stroke();
     }
-    
+
     // Draw axes
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 2;
@@ -4075,70 +4871,70 @@ function generateMonthlyTrendChart() {
     ctx.lineTo(marginLeft, marginTop + chartHeight);
     ctx.lineTo(marginLeft + chartWidth, marginTop + chartHeight);
     ctx.stroke();
-    
+
     // Draw trend line and area
     if (months.length > 1) {
         const pointSpacing = chartWidth / (months.length - 1);
-        
+
         // Create gradient for area fill
         const gradient = ctx.createLinearGradient(0, marginTop, 0, marginTop + chartHeight);
         gradient.addColorStop(0, 'rgba(54, 162, 235, 0.3)');
         gradient.addColorStop(1, 'rgba(54, 162, 235, 0.1)');
-        
+
         // Draw area
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.moveTo(marginLeft, marginTop + chartHeight);
-        
+
         months.forEach((month, index) => {
             const x = marginLeft + (index * pointSpacing);
             const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
-            
+
             if (index === 0) {
                 ctx.lineTo(x, y);
             } else {
                 ctx.lineTo(x, y);
             }
         });
-        
+
         ctx.lineTo(marginLeft + chartWidth, marginTop + chartHeight);
         ctx.closePath();
         ctx.fill();
-        
+
         // Draw trend line
         ctx.strokeStyle = '#36A2EB';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        
+
         months.forEach((month, index) => {
             const x = marginLeft + (index * pointSpacing);
             const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
-            
+
             if (index === 0) {
                 ctx.moveTo(x, y);
             } else {
                 ctx.lineTo(x, y);
             }
         });
-        
+
         ctx.stroke();
-        
+
         // Draw points
         months.forEach((month, index) => {
             const x = marginLeft + (index * pointSpacing);
             const y = marginTop + chartHeight - ((counts[index] / maxCount) * chartHeight);
-            
+
             // Point background
             ctx.fillStyle = 'white';
             ctx.beginPath();
             ctx.arc(x, y, 6, 0, 2 * Math.PI);
             ctx.fill();
-            
+
             // Point border
             ctx.strokeStyle = '#36A2EB';
             ctx.lineWidth = 2;
             ctx.stroke();
-            
+
             // Count label
             ctx.fillStyle = '#333';
             ctx.font = 'bold 11px Arial';
@@ -4146,18 +4942,18 @@ function generateMonthlyTrendChart() {
             ctx.fillText(counts[index], x, y - 12);
         });
     }
-    
+
     // Draw Y-axis labels
     ctx.fillStyle = '#666';
     ctx.font = '11px Arial';
     ctx.textAlign = 'right';
-    
+
     for (let i = 0; i <= 5; i++) {
         const value = Math.round((maxCount / 5) * (5 - i));
         const y = marginTop + (i * chartHeight / 5);
         ctx.fillText(value.toString(), marginLeft - 10, y + 4);
     }
-    
+
     // Draw X-axis labels
     ctx.textAlign = 'center';
     months.forEach((month, index) => {
@@ -4178,17 +4974,17 @@ function updateTrendInsights(months, counts) {
         document.getElementById('changeRate').textContent = '-';
         return;
     }
-    
+
     const maxIndex = counts.indexOf(Math.max(...counts));
     const minIndex = counts.indexOf(Math.min(...counts));
-    
+
     document.getElementById('peakMonth').textContent = months[maxIndex];
     document.getElementById('lowMonth').textContent = months[minIndex];
-    
+
     if (months.length >= 2) {
         const lastCount = counts[counts.length - 1];
         const previousCount = counts[counts.length - 2];
-        
+
         if (previousCount === 0) {
             document.getElementById('changeRate').textContent = lastCount > 0 ? '+100%' : '0%';
         } else {
@@ -4219,24 +5015,24 @@ function resetAllAnalytics() {
             drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูล');
         }
     });
-    
+
     // Reset summary data
     document.getElementById('topProcess').textContent = '-';
     document.getElementById('topProcessCount').textContent = '0';
     document.getElementById('topCause').textContent = '-';
-    
+
     // Reset time distribution
     ['morning', 'afternoon', 'night'].forEach(time => {
         document.getElementById(`${time}Count`).textContent = '0';
         document.getElementById(`${time}Bar`).style.width = '0%';
         document.getElementById(`${time}Percent`).textContent = '0%';
     });
-    
+
     // Reset trend insights
     document.getElementById('peakMonth').textContent = '-';
     document.getElementById('lowMonth').textContent = '-';
     document.getElementById('changeRate').textContent = '-';
-    
+
     // Reset location ranking
     const locationRanking = document.getElementById('locationRanking');
     if (locationRanking) {
@@ -4250,31 +5046,220 @@ function resetAllAnalytics() {
             </div>
         `;
     }
-    
+
     // Reset insights
     document.getElementById('riskFactors').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
     document.getElementById('improvements').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
     document.getElementById('recommendations').innerHTML = '<p>ไม่มีข้อมูลสำหรับการวิเคราะห์</p>';
 }
 
-// Export functions
-function exportAnalytics() {
-    showNotification('กำลังเตรียมไฟล์การวิเคราะห์...', 'info');
-    // Future implementation: Generate and download analytics report
-}
+// ===== Export Functions =====
 
+/**
+ * Export ตารางข้อมูลเป็นไฟล์ CSV
+ */
 function exportTableData() {
-    showNotification('กำลังส่งออกข้อมูลตาราง...', 'info');
-    // Future implementation: Export table data to Excel
+    try {
+        // ดึงข้อมูลจากตาราง
+        const rows = [];
+        const headers = [];
+        const table = document.querySelector('#errorData table, table');
+
+        // รวบรวม headers จาก thead
+        const ths = document.querySelectorAll('#errorTableBody');
+        // ใช้ column names แบบตรงๆ
+        rows.push(['Report ID', 'วันที่เกิด', 'เวร', 'ประเภท', 'สถานที่', 'กระบวนการ', 'ข้อผิดพลาด', 'ผู้รายงาน']);
+
+        const trs = document.querySelectorAll('#errorTableBody tr');
+        trs.forEach(tr => {
+            const tds = tr.querySelectorAll('td');
+            if (tds.length >= 8) {
+                const row = [];
+                for (let i = 0; i < 8; i++) {
+                    let text = (tds[i]?.textContent || '').trim().replace(/,/g, '\uFF0C');
+                    row.push(`"${text}"`);
+                }
+                rows.push(row);
+            }
+        });
+
+        if (rows.length <= 1) {
+            showNotification('ไม่มีข้อมูลในตารางให้ Export', 'warning');
+            return;
+        }
+
+        // สร้าง CSV content (UTF-8 BOM สำหรับ Excel)
+        const BOM = '\uFEFF';
+        const csvContent = BOM + rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `predispensing_errors_${dateStr}.csv`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showNotification(`✅ Export สำเร็จ: ${rows.length - 1} รายการ`, 'success');
+    } catch (err) {
+        showNotification('Export ไม่สำเร็จ: ' + err.message, 'error');
+    }
 }
 
+/**
+ * Export สรุป Analytics เป็น CSV
+ */
+function exportAnalytics() {
+    try {
+        const rows = [];
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('th-TH');
+
+        rows.push(['=== รายงานสรุปสถิติ Predispensing Error ===']);
+        rows.push([`วันที่สร้างรายงาน: ${dateStr}`]);
+        rows.push([]);
+
+        // กระบวนการ
+        rows.push(['กระบวนการ', 'จำนวน']);
+        Object.entries(analyticsData.processData)
+            .sort((a, b) => b[1] - a[1])
+            .forEach(([k, v]) => rows.push([`"${k}"`, v]));
+        rows.push([]);
+
+        // สาเหตุ
+        rows.push(['สาเหตุ', 'จำนวน']);
+        Object.entries(analyticsData.causeData)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .forEach(([k, v]) => rows.push([`"${k}"`, v]));
+        rows.push([]);
+
+        // สถานที่
+        rows.push(['สถานที่', 'จำนวน']);
+        Object.entries(analyticsData.locationData)
+            .sort((a, b) => b[1] - a[1])
+            .forEach(([k, v]) => rows.push([`"${k}"`, v]));
+        rows.push([]);
+
+        // เวร
+        rows.push(['เวร', 'จำนวน']);
+        rows.push(['เช้า', analyticsData.timeData.morning]);
+        rows.push(['บ่าย', analyticsData.timeData.afternoon]);
+        rows.push(['ดึก', analyticsData.timeData.night]);
+
+        const BOM = '\uFEFF';
+        const csvContent = BOM + rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `analytics_summary_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}.csv`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showNotification('✅ Export Analytics สำเร็จ', 'success');
+    } catch (err) {
+        showNotification('Export ไม่สำเร็จ: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Export Dashboard เป็น PDF ผ่าน window.print()
+ */
+function exportDashboardPDF() {
+    // Temporarily show only the dashboard for printing
+    const dashboard = document.getElementById('dashboard');
+    if (!dashboard) return;
+
+    document.body.classList.add('print-mode');
+    window.print();
+    document.body.classList.remove('print-mode');
+}
+
+/**
+ * Refresh chart ตาม chartType ที่ระบุ
+ */
 function refreshChart(chartType) {
-    showNotification(`กำลังรีเฟรชกราฟ ${chartType}...`, 'info');
-    // Future implementation: Refresh specific chart
+    switch (chartType) {
+        case 'process': generateProcessChart(); break;
+        case 'cause': generateCauseChart(); break;
+        case 'trend': generateMonthlyTrendChart(); break;
+        case 'drug': generateDrugChartByProcess(); break;
+        default: refreshAdvancedAnalytics();
+    }
+    showNotification(`รีเฟรชกราฟ ${chartType || 'ทั้งหมด'} เรียบร้อย`, 'success');
 }
 
+/**
+ * อัปเดต Trend Chart ตาม period ที่เลือก
+ */
 function updateTrendChart() {
-    const period = document.getElementById('trendPeriod').value;
-    showNotification(`กำลังอัพเดตแนวโน้ม ${period} เดือน...`, 'info');
-    // Future implementation: Update trend chart with selected period
+    const periodEl = document.getElementById('trendPeriod');
+    if (!periodEl) return;
+    const months = parseInt(periodEl.value) || 12;
+
+    // กรอง monthlyTrend ตามช่วงเวลาที่เลือก
+    const allTrend = analyticsData.monthlyTrend || [];
+    if (allTrend.length === 0) {
+        showNotification('ยังไม่มีข้อมูล Trend', 'warning');
+        return;
+    }
+
+    // Rebuild trend chart with filtered data
+    const filtered = allTrend.slice(-months);
+    const filteredMonths = filtered.map(t => t.month);
+    const filteredCounts = filtered.map(t => t.count);
+
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+        trendChartInstance = null;
+    }
+
+    if (filteredMonths.length === 0) {
+        drawNoDataMessage(ctx, canvas, 'ไม่มีข้อมูลในช่วงเวลานี้');
+        return;
+    }
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: filteredMonths,
+            datasets: [{
+                label: `แนวโน้ม ${months} เดือนล่าสุด`,
+                data: filteredCounts,
+                borderColor: '#2563EB',
+                backgroundColor: 'rgba(37,99,235,0.08)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#2563EB',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } }
+            }
+        }
+    });
+
+    updateTrendInsights(filteredMonths, filteredCounts);
+    showNotification(`✅ อัปเดต Trend ${months} เดือนล่าสุดแล้ว`, 'success');
 }
+

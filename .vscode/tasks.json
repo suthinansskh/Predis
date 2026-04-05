@@ -4,56 +4,22 @@
 		{
 			"label": "Launch Live Server",
 			"type": "shell",
-			"command": "code",
+			"command": "npx",
 			"args": [
-				"--command",
-				"extension.liveServer.goOnline"
-			],
-			"isBackground": true,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Launch Live Server",
-			"type": "shell",
-			"command": "code --command extension.liveServer.goOnline",
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "Start Live Server",
-			"type": "shell",
-			"command": "live-server",
-			"args": [
+				"live-server",
 				"--port=5500",
 				"--open=/index.html"
 			],
 			"isBackground": true,
 			"problemMatcher": [],
-			"group": "serve"
-		},
-		{
-			"label": "Launch Live Server",
-			"type": "shell",
-			"command": "cd \"c:\\Users\\ASUS\\OneDrive\\Documents\\Predis\" && npx live-server --port=3000 --browser=chrome --open=/index.html",
-			"isBackground": true,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Launch Live Server",
-			"type": "shell",
-			"command": "start chrome http://localhost:5500",
-			"isBackground": true,
-			"group": "test"
-		},
-		{
-			"label": "Launch Live Server",
-			"type": "shell",
-			"command": "code --install-extension ritwickdey.liveserver",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "silent",
+				"panel": "dedicated"
+			}
 		}
 	]
 }

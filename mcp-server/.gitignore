@@ -1,0 +1,6 @@
+# ===== MCP Server =====
+node_modules/
+.env
+credentials.json
+*.key
+*.pem

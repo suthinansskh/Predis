@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แดชบอร์ด - Predispensing Error Recorder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Predis">
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body data-page="dashboard">
+    <!-- Login Section -->
+    <section id="login" class="login-section active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <i class="fas fa-pills"></i>
+                    <h1>Predispensing Error Recorder</h1>
+                    <p>กรุณาเข้าสู่ระบบด้วย PS Code และรหัสผ่าน (4 ตัวท้ายของ ID13)</p>
+                </div>
+                
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="userCode">
+                            <i class="fas fa-user"></i> PS Code หรือ ID13:
+                        </label>
+                        <input type="text" id="userCode" name="userCode" required 
+                               placeholder="ใส่ PS Code หรือ ID13" autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-lock"></i> รหัสผ่าน:
+                        </label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="4 ตัวท้ายของ ID13" autocomplete="current-password">
+                    </div>
+                    
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+                    </button>
+                </form>
+                
+                <div class="login-info">
+                    <p><i class="fas fa-info-circle"></i> ติดต่อ IT ถ้าไม่สามารถเข้าสู่ระบบได้</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="container" style="display: none;">
+        <header>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1><i class="fas fa-chart-bar"></i> แดชบอร์ด Predispensing Error</h1>
+                    <p>วิเคราะห์ข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+                </div>
+                <div class="header-right">
+                    <span id="currentUser" class="current-user">
+                        <i class="fas fa-user"></i> <span id="userName">Loading...</span>
+                    </span>
+                    <button id="logoutBtn" class="logout-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <nav>
+            <a href="report.html" class="nav-btn">
+                <i class="fas fa-plus"></i> บันทึกข้อผิดพลาด
+            </a>
+            <a href="dashboard.html" class="nav-btn active">
+                <i class="fas fa-chart-bar"></i> แดชบอร์ด
+            </a>
+            <a href="myreport.html" class="nav-btn">
+                <i class="fas fa-user-clock"></i> สรุปรายบุคคล
+            </a>
+            <a href="index.html#druglist" class="nav-btn" onclick="navigateTo(event, 'druglist')">
+                <i class="fas fa-pills"></i> รายการยา
+            </a>
+            <a href="index.html#settings" class="nav-btn" id="settingsNavBtn" onclick="navigateTo(event, 'settings')">
+                <i class="fas fa-cog"></i> ตั้งค่า
+            </a>
+        </nav>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="section active">
+            <div class="card">
+                <h2>แดชบอร์ดข้อผิดพลาด - การวิเคราะห์เชิงลึก</h2>
+                <div class="user-info" id="dashboardUserInfo">
+                    <strong>ผู้ใช้:</strong> <span id="currentUserDisplay">-</span> | 
+                    <strong>กลุ่ม:</strong> <span id="currentGroupDisplay">-</span>
+                </div>
+
+                <!-- SECTION 1: ภาพรวมระบบ -->
+                <h3 class="dashboard-section-title">ส่วนที่ 1: ภาพรวมระบบ</h3>
+                <div class="stats-grid" id="overviewStats">
+                    <div class="stat-card primary">
+                        <div class="stat-icon"><i class="fas fa-database"></i></div>
+                        <div class="stat-content">
+                            <h3>ทั้งหมด (All Time)</h3>
+                            <div class="stat-number" id="totalAllTime">0</div>
+                            <div class="stat-description">รวมทุกช่วงเวลา</div>
+                        </div>
+                    </div>
+                    <div class="stat-card info">
+                        <div class="stat-icon"><i class="fas fa-calendar"></i></div>
+                        <div class="stat-content">
+                            <h3>ปีนี้</h3>
+                            <div class="stat-number" id="totalYear">0</div>
+                            <div class="stat-description">รวมในปีงบประมาณ</div>
+                        </div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
+                        <div class="stat-content">
+                            <h3>เดือนนี้</h3>
+                            <div class="stat-number" id="totalMonth">0</div>
+                            <div class="stat-description">รวมในเดือนปัจจุบัน</div>
+                        </div>
+                    </div>
+                    <div class="stat-card secondary">
+                        <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
+                        <div class="stat-content">
+                            <h3>7 วันล่าสุด</h3>
+                            <div class="stat-number" id="totalWeek">0</div>
+                            <div class="stat-description">ย้อนหลัง 7 วัน</div>
+                        </div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
+                        <div class="stat-content">
+                            <h3>วันนี้</h3>
+                            <div class="stat-number" id="totalToday">0</div>
+                            <div class="stat-description">ตั้งแต่ 00:00 น.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 3: การวิเคราะห์เชิงลึก -->
+                <h3 class="dashboard-section-title">ส่วนที่ 3: การวิเคราะห์เชิงลึก (ตามตัวกรอง)</h3>
+                <div id="analyticsFilters" class="analytics-filters">
+                    <div class="analytics-filter-group">
+                        <label for="analyticsErrorType">ประเภทผู้ป่วย</label>
+                        <select id="analyticsErrorType">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
+                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
+                        </select>
+                    </div>
+                    <div class="analytics-filter-group">
+                        <label for="analyticsProcessFilter">กระบวนการ</label>
+                        <select id="analyticsProcessFilter">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="จัดยา">จัดยา</option>
+                            <option value="ลงข้อมูล">ลงข้อมูล</option>
+                            <option value="เตรียมยา">เตรียมยา</option>
+                            <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                            <option value="จัดเก็บ">จัดเก็บ</option>
+                            <option value="จัดส่ง">จัดส่ง</option>
+                        </select>
+                    </div>
+                    <div class="analytics-filter-group">
+                        <label for="analyticsPeriodMode">โหมดช่วงเวลา</label>
+                        <select id="analyticsPeriodMode">
+                            <option value="all">ทั้งหมด</option>
+                            <option value="year">ปี</option>
+                            <option value="month">เดือน</option>
+                        </select>
+                    </div>
+                    <div id="analyticsYearWrapper" class="analytics-filter-group" style="display:none;">
+                        <label for="analyticsYear">ปี</label>
+                        <select id="analyticsYear"></select>
+                    </div>
+                    <div id="analyticsMonthWrapper" class="analytics-filter-group" style="display:none;">
+                        <label for="analyticsMonth">เดือน</label>
+                        <select id="analyticsMonth">
+                            <option value="01">มกราคม</option>
+                            <option value="02">กุมภาพันธ์</option>
+                            <option value="03">มีนาคม</option>
+                            <option value="04">เมษายน</option>
+                            <option value="05">พฤษภาคม</option>
+                            <option value="06">มิถุนายน</option>
+                            <option value="07">กรกฎาคม</option>
+                            <option value="08">สิงหาคม</option>
+                            <option value="09">กันยายน</option>
+                            <option value="10">ตุลาคม</option>
+                            <option value="11">พฤศจิกายน</option>
+                            <option value="12">ธันวาคม</option>
+                        </select>
+                    </div>
+                    <div class="analytics-filter-actions">
+                        <button id="applyAnalyticsFilters" type="button" class="btn btn-primary">
+                            <i class="fas fa-filter"></i> ใช้ตัวกรอง
+                        </button>
+                        <button id="resetAnalyticsFilters" type="button" class="btn btn-secondary">
+                            <i class="fas fa-undo"></i> รีเซ็ต
+                        </button>
+                    </div>
+                    <div id="analyticsFilterSummary" class="analytics-filter-summary">ตัวกรอง: ทั้งหมด</div>
+                </div>
+
+                <!-- Analytics Charts Section -->
+                <div class="analytics-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-chart-bar"></i> การวิเคราะห์ข้อมูลเชิงลึก</h3>
+                        <p>การวิเคราะห์รูปแบบและแนวโน้มของข้อผิดพลาดในการจ่ายยา</p>
+                    </div>
+                    
+                    <div class="analytics-grid">
+                        <!-- Error Details Analysis -->
+                        <div class="analytics-card error-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-exclamation-triangle"></i> ข้อผิดพลาด</h4>
+                                <div class="card-actions">
+                                    <select id="errorProcessFilter" onchange="filterErrorByProcess()">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('error')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="errorChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">ข้อผิดพลาดหลัก:</span>
+                                    <span class="value" id="topError">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedErrorProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="errorItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cause Analysis -->
+                        <div class="analytics-card cause-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-search"></i> สาเหตุของข้อผิดพลาด</h4>
+                                <div class="card-actions">
+                                    <select id="processFilter" onchange="filterCauseByProcess()">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('cause')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="causeChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">สาเหตุหลัก:</span>
+                                    <span class="value" id="topCause">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="causeItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Drug Statistics -->
+                        <div class="analytics-card drug-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-pills"></i> รายการยาที่ถูกต้อง</h4>
+                                <div class="card-actions">
+                                    <select id="drugProcessFilter" onchange="filterDrugByProcess()">
+                                        <option value="all">ทุกกระบวนการ</option>
+                                        <option value="จัดยา">จัดยา</option>
+                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
+                                        <option value="เตรียมยา">เตรียมยา</option>
+                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                                        <option value="จัดเก็บ">จัดเก็บ</option>
+                                        <option value="จัดส่ง">จัดส่ง</option>
+                                    </select>
+                                    <button onclick="refreshChart('drug')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="drugChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">ยาหลัก:</span>
+                                    <span class="value" id="topDrug">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการ:</span>
+                                    <span class="value" id="selectedDrugProcess">ทุกกระบวนการ</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวนรายการ:</span>
+                                    <span class="value" id="drugItemCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Process Analysis -->
+                        <div class="analytics-card process-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-cogs"></i> การกระจายตามกระบวนการ</h4>
+                                <div class="card-actions">
+                                    <button onclick="refreshChart('process')" class="btn-icon" title="รีเฟรชกราฟ">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="processChart" width="420" height="320"></canvas>
+                            </div>
+                            <div class="chart-summary">
+                                <div class="summary-item">
+                                    <span class="label">กระบวนการหลัก:</span>
+                                    <span class="value" id="topProcess">-</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">จำนวน:</span>
+                                    <span class="value" id="topProcessCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Time Analysis -->
+                        <div class="analytics-card time-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-clock"></i> การกระจายตามช่วงเวลา</h4>
+                            </div>
+                            <div class="time-distribution">
+                                <div class="time-slot">
+                                    <div class="time-header">
+                                        <span class="time-label">เวรเช้า (08:00-16:00)</span>
+                                        <span class="time-count" id="morningCount">0</span>
+                                    </div>
+                                    <div class="time-bar">
+                                        <div class="time-fill morning" id="morningBar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="time-percentage" id="morningPercent">0%</div>
+                                </div>
+                                <div class="time-slot">
+                                    <div class="time-header">
+                                        <span class="time-label">เวรบ่าย (16:00-24:00)</span>
+                                        <span class="time-count" id="afternoonCount">0</span>
+                                    </div>
+                                    <div class="time-bar">
+                                        <div class="time-fill afternoon" id="afternoonBar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="time-percentage" id="afternoonPercent">0%</div>
+                                </div>
+                                <div class="time-slot">
+                                    <div class="time-header">
+                                        <span class="time-label">เวรดึก (24:00-08:00)</span>
+                                        <span class="time-count" id="nightCount">0</span>
+                                    </div>
+                                    <div class="time-bar">
+                                        <div class="time-fill night" id="nightBar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="time-percentage" id="nightPercent">0%</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Location Ranking -->
+                        <div class="analytics-card location-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-map-marker-alt"></i> สถานที่เกิดเหตุบ่อยที่สุด</h4>
+                            </div>
+                            <div class="location-ranking" id="locationRanking">
+                                <div class="ranking-item">
+                                    <div class="rank-badge">1</div>
+                                    <div class="location-info">
+                                        <div class="location-name">กำลังโหลด...</div>
+                                        <div class="location-count">0 ครั้ง</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Monthly Trend -->
+                        <div class="analytics-card full-width trend-card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-chart-line"></i> แนวโน้มรายเดือน (6 เดือนล่าสุด)</h4>
+                                <div class="card-actions">
+                                    <select id="trendPeriod" onchange="updateTrendChart()">
+                                        <option value="6">6 เดือน</option>
+                                        <option value="12">12 เดือน</option>
+                                        <option value="24">24 เดือน</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="chart-container large">
+                                <canvas id="trendChart" width="800" height="300"></canvas>
+                            </div>
+                            <div class="trend-insights">
+                                <div class="insight-item">
+                                    <i class="fas fa-arrow-up text-danger"></i>
+                                    <span>เดือนที่มีข้อผิดพลาดสูงสุด: <strong id="peakMonth">-</strong></span>
+                                </div>
+                                <div class="insight-item">
+                                    <i class="fas fa-arrow-down text-success"></i>
+                                    <span>เดือนที่มีข้อผิดพลาดต่ำสุด: <strong id="lowMonth">-</strong></span>
+                                </div>
+                                <div class="insight-item">
+                                    <i class="fas fa-percentage text-info"></i>
+                                    <span>อัตราการเปลี่ยนแปลง: <strong id="changeRate">-</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Enhanced Data Table -->
+                <div class="data-table-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-table"></i> ตารางข้อมูลรายละเอียด</h3>
+                        <div class="table-controls">
+                            <input type="text" id="tableSearch" placeholder="ค้นหาในตาราง..." class="search-input">
+                            <select id="tablePageSize" class="page-size-select" onchange="tablePageSizeChanged()">
+                                <option value="25">25 รายการ</option>
+                                <option value="50">50 รายการ</option>
+                                <option value="100">100 รายการ</option>
+                            </select>
+                            <button onclick="exportTableData()" class="export-table-btn">
+                                <i class="fas fa-file-excel"></i> ส่งออกตาราง
+                            </button>
+                            <button onclick="exportDashboardPDF()" class="export-table-btn" style="background: var(--color-danger, #DC2626);">
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table-container">
+                        <div class="table-legend">
+                            <span class="legend-item">
+                                <span class="legend-color my-report"></span>
+                                รายงานของคุณ
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-color high-priority"></span>
+                                ข้อผิดพลาดสำคัญ
+                            </span>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="errorTable" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-sort="reportId">
+                                            <span>เลขที่รายงาน</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="date">
+                                            <span>วันที่</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="shift">
+                                            <span>เวร</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="type">
+                                            <span>ประเภท</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="location">
+                                            <span>สถานที่</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="process">
+                                            <span>กระบวนการ</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="error">
+                                            <span>ข้อผิดพลาด</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th class="sortable" data-sort="reporter">
+                                            <span>ผู้รายงาน</span>
+                                            <i class="fas fa-sort"></i>
+                                        </th>
+                                        <th>การดำเนินการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="errorTableBody">
+                                    <tr>
+                                        <td colspan="9" class="no-data">
+                                            <div class="no-data-content">
+                                                <i class="fas fa-database"></i>
+                                                <p>ไม่มีข้อมูล</p>
+                                                <small>กดปุ่ม "รีเฟรชข้อมูล" เพื่อโหลดจาก Google Sheets</small>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Pagination -->
+                        <div class="table-pagination">
+                            <div class="pagination-info">
+                                แสดง <span id="showingStart">0</span> - <span id="showingEnd">0</span> 
+                                จาก <span id="totalRecords">0</span> รายการ
+                            </div>
+                            <div class="pagination-controls">
+                                <button id="tablePrevPage" class="pagination-btn" onclick="tablePrevPage()" disabled>
+                                    <i class="fas fa-chevron-left"></i> ก่อนหน้า
+                                </button>
+                                <span id="tablePageInfo" class="page-info">หน้า 1 / 1</span>
+                                <button id="tableNextPage" class="pagination-btn" onclick="tableNextPage()" disabled>
+                                    ถัดไป <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

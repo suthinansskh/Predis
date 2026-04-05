@@ -87,3 +87,13 @@ secrets.js
 # Temporary files
 *.tmp
 *.temp
+
+# Drug data files (generated from MySQL)
+drug_list.json
+drug_list_raw.json
+
+# Credentials and environment files
+mcp-server/.env
+mcp-server/credentials.json
+server/.env
+server/credentials.json
