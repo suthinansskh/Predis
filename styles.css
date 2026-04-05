@@ -2655,3 +2655,18 @@ nav::-webkit-scrollbar { display: none; }
     .print-mode .chart-container canvas { max-height: 240px; }
     .print-mode .stat-card { break-inside: avoid; }
 }
+
+
+/* Validation Shake Animation */
+@keyframes invalid-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    50% { transform: translateX(5px); }
+    75% { transform: translateX(-5px); }
+}
+
+.invalid-shake {
+    animation: invalid-shake 0.4s ease-in-out;
+    border-color: #DC2626 !important;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
