@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,9 +16,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="premium-ui.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
+
 <body data-page="report">
     <!-- Login Section -->
     <section id="login" class="login-section active">
@@ -28,29 +29,29 @@
                     <h1>Predispensing Error Recorder</h1>
                     <p>กรุณาเข้าสู่ระบบด้วย PS Code และรหัสผ่าน (4 ตัวท้ายของ ID13)</p>
                 </div>
-                
+
                 <form id="loginForm" class="login-form">
                     <div class="form-group">
                         <label for="userCode">
                             <i class="fas fa-user"></i> PS Code หรือ ID13:
                         </label>
-                        <input type="text" id="userCode" name="userCode" required 
-                               placeholder="ใส่ PS Code หรือ ID13" autocomplete="username">
+                        <input type="text" id="userCode" name="userCode" required placeholder="ใส่ PS Code หรือ ID13"
+                            autocomplete="username">
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="password">
                             <i class="fas fa-lock"></i> รหัสผ่าน:
                         </label>
-                        <input type="password" id="password" name="password" required 
-                               placeholder="4 ตัวท้ายของ ID13" autocomplete="current-password">
+                        <input type="password" id="password" name="password" required placeholder="4 ตัวท้ายของ ID13"
+                            autocomplete="current-password">
                     </div>
-                    
+
                     <button type="submit" class="login-btn">
                         <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
                     </button>
                 </form>
-                
+
                 <div class="login-info">
                     <p><i class="fas fa-info-circle"></i> ติดต่อ IT ถ้าไม่สามารถเข้าสู่ระบบได้</p>
                 </div>
@@ -194,10 +195,8 @@
 
                     <div class="form-group">
                         <label for="correctItem">รายการที่ถูกต้อง:</label>
-                        <input type="text" id="correctItem" name="correctItem" 
-                               list="correctItemList" 
-                               placeholder="พิมพ์เพื่อค้นหารายการยาที่ถูกต้องตามใบสั่งยา" 
-                               autocomplete="off" required>
+                        <input type="text" id="correctItem" name="correctItem" list="correctItemList"
+                            placeholder="พิมพ์เพื่อค้นหารายการยาที่ถูกต้องตามใบสั่งยา" autocomplete="off" required>
                         <datalist id="correctItemList">
                         </datalist>
                         <small class="form-help">ค้นหาชื่อยาหรือรหัสยาที่ควรจะได้รับตามใบสั่งยา</small>
@@ -205,13 +204,12 @@
 
                     <div class="form-group">
                         <label for="incorrectItem">รายการยาที่ผิด: <span class="optional">(ไม่บังคับ)</span></label>
-                        <input type="text" id="incorrectItem" name="incorrectItem" 
-                               list="incorrectItemList" 
-                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด (สามารถระบุค่าว่างได้)" 
-                               autocomplete="off">
+                        <input type="text" id="incorrectItem" name="incorrectItem" list="incorrectItemList"
+                            placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด (สามารถระบุค่าว่างได้)" autocomplete="off">
                         <datalist id="incorrectItemList">
                         </datalist>
-                        <small class="form-help">กรณีไม่มียาที่เตรียมผิด หรือยังไม่ได้เตรียมยา สามารถปล่อยว่างได้</small>
+                        <small class="form-help">กรณีไม่มียาที่เตรียมผิด หรือยังไม่ได้เตรียมยา
+                            สามารถปล่อยว่างได้</small>
                     </div>
 
                     <div class="form-group">
@@ -240,7 +238,8 @@
 
                     <div class="form-group">
                         <label for="additionalDetails">รายละเอียดเพิ่มเติม (ถ้ามี):</label>
-                        <textarea id="additionalDetails" name="additionalDetails" rows="4" placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
+                        <textarea id="additionalDetails" name="additionalDetails" rows="4"
+                            placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
                     </div>
 
                     <!-- HAD Information Section -->
@@ -266,12 +265,11 @@
 
                     <div class="form-group">
                         <label for="reporter">ผู้รายงาน:</label>
-                        <input type="text" id="reporter" name="reporter" readonly
-                               value="กรุณาเข้าสู่ระบบก่อนใช้งาน">
+                        <input type="text" id="reporter" name="reporter" readonly value="กรุณาเข้าสู่ระบบก่อนใช้งาน">
                         <small>ข้อมูลจากผู้ใช้ที่เข้าสู่ระบบ</small>
                     </div>
 
-                    <button type="submit" class="submit-btn btn-primary">
+                    <button type="submit" class="submit-btn">
                         <i class="fas fa-save"></i> บันทึก <span class="shortcut-hint">Ctrl+Enter</span>
                     </button>
                 </form>
@@ -284,8 +282,9 @@
     <script src="script.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(() => {});
+            navigator.serviceWorker.register('sw.js').catch(() => { });
         }
     </script>
 </body>
+
 </html>
