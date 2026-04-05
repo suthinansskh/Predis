@@ -89,7 +89,6 @@ secrets.js
 *.temp
 
 # Drug data files (generated from MySQL)
-drug_list.json
 drug_list_raw.json
 
 # Credentials and environment files
