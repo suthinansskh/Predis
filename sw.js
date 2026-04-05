@@ -1,4 +1,4 @@
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_NAME = `predis-v${CACHE_VERSION}`;
 const ASSETS = [
   '/',
@@ -53,10 +53,11 @@ self.addEventListener('fetch', event => {
   if (ASSETS.some(a => url.pathname === a || url.pathname.endsWith(a.slice(1)))) {
     event.respondWith(
       caches.match(event.request).then(cached => {
-        const fetchPromise = fetch(event.request)
+          const fetchPromise = fetch(event.request)
           .then(response => {
             if (response.ok) {
-              caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+              const resClone = response.clone(); // Clone synchronously
+              caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
             }
             return response;
           })
