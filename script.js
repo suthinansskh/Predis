@@ -176,9 +176,6 @@ function updateReporterField() {
     const reporterEl = document.getElementById('reporter');
 
     if (!reporterEl) {
-        console.error('Reporter element not found in DOM');
-        // Try to find it with query selector
-        const altReporter = document.querySelector('input[name="reporter"]');
         return;
     }
 

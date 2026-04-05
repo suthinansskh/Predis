@@ -1,14 +1,14 @@
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_NAME = `predis-v${CACHE_VERSION}`;
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/report.html',
-  '/dashboard.html',
-  '/myreport.html',
-  '/styles.css',
-  '/script.js',
-  '/manifest.json'
+  './',
+  './index.html',
+  './report.html',
+  './dashboard.html',
+  './myreport.html',
+  './styles.css',
+  './script.js',
+  './manifest.json'
 ];
 
 self.addEventListener('install', event => {
