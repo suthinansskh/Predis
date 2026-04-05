@@ -1069,12 +1069,14 @@ function makeSearchable(inputEl, optionsOrGetter) {
                 }, 10);
             }
 
-            item.addEventListener('mousedown', function (e) {
+            const handleSelect = function(e) {
                 e.preventDefault(); // prevent blur
                 selectIndex(i);
                 hideList();
                 inputEl.focus();
-            });
+            };
+            item.addEventListener('mousedown', handleSelect);
+            item.addEventListener('touchstart', handleSelect, { passive: false });
 
             // Update active index on mouse enter
             item.addEventListener('mouseenter', function () {
@@ -3431,26 +3433,9 @@ async function loadDrugList() {
 
         // 3. Last Resort: Demo Mode
         if (!googleSheetsConfig.webAppUrl || !loadedFromSheet) {
-            // Demo Mode: ใช้ข้อมูลยาตัวอย่างถ้าไม่ได้ตั้งค่า Web App URL หรือโหลดไม่สำเร็จ
             console.log('Demo Mode: ใช้ข้อมูลยาตัวอย่าง');
-            const sampleDrugs = [
-                { drugCode: 'PAR500', drugName: 'Paracetamol 500mg', group: 'Analgesic', had: 'Regular', status: 'Active' },
-                { drugCode: 'ASP100', drugName: 'Aspirin 100mg', group: 'Antiplatelet', had: 'Regular', status: 'Active' },
-                { drugCode: 'INS001', drugName: 'Insulin Regular', group: 'Antidiabetic', had: 'High', status: 'Active' },
-                { drugCode: 'WAR5', drugName: 'Warfarin 5mg', group: 'Anticoagulant', had: 'High', status: 'Active' },
-                { drugCode: 'ATR025', drugName: 'Atorvastatin 20mg', group: 'Statin', had: 'Regular', status: 'Active' }
-            ];
-
-            // ทำความสะอาดและตรวจสอบข้อมูล
-            drugListData = sampleDrugs;
-            globalDrugList = cleanDrugData(sampleDrugs);
-            setupDrugSearchInputs();
-            console.log('โหลดข้อมูลยาตัวอย่าง:', globalDrugList.length, 'รายการ');
-
-            // แสดงรายการ HAD จากข้อมูลตัวอย่าง
-            displayHADListFromDatabase(globalDrugList);
-
-            return sampleDrugs;
+            createSampleDrugData();
+            return drugListData;
         }
 
     } catch (error) {
