@@ -1,18 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Predispensing Error Recorder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Predis">
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Chart.js for interactive charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
-<body>
+<body data-page="index">
     <!-- Login Section -->
     <section id="login" class="login-section active">
         <div class="login-container">
@@ -20,7 +23,7 @@
                 <div class="login-header">
                     <i class="fas fa-pills"></i>
                     <h1>Predispensing Error Recorder</h1>
-                    <p>กรุณาเข้าสู่ระบบด้วย PS Code/ID13 และรหัสผ่าน</p>
+                    <p>กรุณาเข้าสู่ระบบด้วย PS Code และรหัสผ่าน (4 ตัวท้ายของ ID13)</p>
                 </div>
                 
                 <form id="loginForm" class="login-form">
@@ -37,7 +40,7 @@
                             <i class="fas fa-lock"></i> รหัสผ่าน:
                         </label>
                         <input type="password" id="password" name="password" required 
-                               placeholder="ใส่รหัสผ่าน" autocomplete="current-password">
+                               placeholder="4 ตัวท้ายของ ID13" autocomplete="current-password">
                     </div>
                     
                     <button type="submit" class="login-btn">
@@ -57,8 +60,8 @@
         <header>
             <div class="header-content">
                 <div class="header-left">
-                    <h1><i class="fas fa-pills"></i> บันทึก Predispensing Error</h1>
-                    <p>กรอกข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+                    <h1><i class="fas fa-pills"></i> Predispensing Error Recorder</h1>
+                    <p>รายการยาและการตั้งค่าระบบ</p>
                 </div>
                 <div class="header-right">
                     <span id="currentUser" class="current-user">
@@ -72,727 +75,47 @@
         </header>
 
         <nav>
-            <button class="nav-btn active" onclick="showSection('form')">
+            <a href="report.html" class="nav-btn">
                 <i class="fas fa-plus"></i> บันทึกข้อผิดพลาด
-            </button>
-            <button class="nav-btn" onclick="showSection('dashboard')">
+            </a>
+            <a href="dashboard.html" class="nav-btn">
                 <i class="fas fa-chart-bar"></i> แดชบอร์ด
-            </button>
-            <button class="nav-btn" onclick="showSection('druglist')">
+            </a>
+            <a href="myreport.html" class="nav-btn">
+                <i class="fas fa-user-clock"></i> สรุปรายบุคคล
+            </a>
+            <a href="#druglist" class="nav-btn active" onclick="showSection('druglist')">
                 <i class="fas fa-pills"></i> รายการยา
-            </button>
-            <button class="nav-btn" onclick="showSection('settings')">
+            </a>
+            <a href="#settings" class="nav-btn" id="settingsNavBtn" onclick="showSection('settings')">
                 <i class="fas fa-cog"></i> ตั้งค่า
-            </button>
+            </a>
         </nav>
 
-        <!-- Error Report Form Section -->
-        <section id="form" class="section active">
-            <div class="card">
-                <h2>บันทึก Predispensing Error</h2>
-                <form id="errorForm">
-                    <div class="form-group">
-                        <label for="eventDate">วันที่เกิดเหตุการณ์:</label>
-                        <input type="date" id="eventDate" name="eventDate" required>
-                    </div>
-
-                    <input type="hidden" id="reportId" name="reportId">
-
-                    <div class="form-group">
-                        <label for="shift">เวร:</label>
-                        <select id="shift" name="shift" required>
-                            <option value="">เลือกเวร</option>
-                            <option value="เช้า">เช้า (08:00-16:00)</option>
-                            <option value="บ่าย">บ่าย (16:00-24:00)</option>
-                            <option value="ดึก">ดึก (24:00-08:00)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="errorType">ประเภท:</label>
-                        <select id="errorType" name="errorType" required>
-                            <option value="">เลือกประเภท</option>
-                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
-                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="location">สถานที่เกิดเหตุการณ์:</label>
-                        <select id="location" name="location" required>
-                            <option value="">เลือกสถานที่</option>
-                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น1">ห้องจ่ายยาผู้ป่วยนอกชั้น1</option>
-                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น2">ห้องจ่ายยาผู้ป่วยนอกชั้น2</option>
-                            <option value="ห้องจ่ายยาจิตเวช">ห้องจ่ายยาจิตเวช</option>
-                            <option value="ห้องจ่ายยาคลินคพิเศษ">ห้องจ่ายยาคลินคพิเศษ</option>
-                            <option value="ห้องยาผู้ป่วยใน">ห้องยาผู้ป่วยใน</option>
-                            <option value="ห้องยาอุบัติเหตุ-ฉุกเฉิน">ห้องยาอุบัติเหตุ-ฉุกเฉิน</option>
-                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยใน">ห้องยาอุบัติเหตุ-ผู้ป่วยใน</option>
-                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน">ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน</option>
-                            <option value="ห้องจ่ายเวชภัณฑ์">ห้องจ่ายเวชภัณฑ์</option>
-                            <option value="งานจัดซื้อยาและเวชภัณฑ์">งานจัดซื้อยาและเวชภัณฑ์</option>
-                            <option value="งานคลังยา">งานคลังยา</option>
-                            <option value="งานผลิตยา">งานผลิตยา</option>
-                            <option value="งานเคมีบำบัด">งานเคมีบำบัด</option>
-                            <option value="คลังเวชภัณฑ์">งานคลังเวชภัณฑ์</option>
-                            <option value="รพ.สต.">รพ.สต.</option>
-                            <option value="อื่นๆ">อื่นๆ (ระบุในรายละเอียดเพิ่มเติม)</option>
-                    </select>
-                    </div>
-                    <div class="form-group" id="substationGroup" style="display:none;">
-                        <label for="substation">เลือกโรงพยาบาลส่งเสริมสุขภาพตำบล</label>
-                        <select id="substation">
-                            <option value="">เลือก รพ.สต.</option>
-                            <option value="รพ.สต.คูซอด">รพ.สต.คูซอด</option>
-                            <option value="รพ.สต.แทง">รพ.สต.แทง</option>
-                            <option value="รพ.สต.หนองคู">รพ.สต.หนองคู</option>
-                            <option value="รพ.สต.ตะดอบ">รพ.สต.ตะดอบ</option>
-                            <option value="รพ.สต.หนองครก">รพ.สต.หนองครก</option>
-                            <option value="รพ.สต.กุดโง้ง">รพ.สต.กุดโง้ง</option>
-                            <option value="รพ.สต.โพนค้อ">รพ.สต.โพนค้อ</option>
-                            <option value="รพ.สต.หนองแว้ง">รพ.สต.หนองแว้ง</option>
-                            <option value="รพ.สต.โนนแกด">รพ.สต.โนนแกด</option>
-                            <option value="รพ.สต.หนองไฮ">รพ.สต.หนองไฮ</option>
-                            <option value="รพ.สต.หนองแก้ว">รพ.สต.หนองแก้ว</option>
-                            <option value="รพ.สต.น้ำคำ">รพ.สต.น้ำคำ</option>
-                            <option value="รพ.สต.หนองโน">รพ.สต.หนองโน</option>
-                            <option value="รพ.สต.โพธิ์">รพ.สต.โพธิ์</option>
-                            <option value="รพ.สต.สร้างเรือง">รพ.สต.สร้างเรือง</option>
-                            <option value="รพ.สต.ก้านเหลือง">รพ.สต.ก้านเหลือง</option>
-                            <option value="รพ.สต.หนองไผ่">รพ.สต.หนองไผ่</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="process">กระบวนการ:</label>
-                        <select id="process" name="process" required>
-                            <option value="">เลือกกระบวนการ</option>
-                            <option value="จัดยา">จัดยา</option>
-                            <option value="ลงข้อมูล">ลงข้อมูล</option>
-                            <option value="เตรียมยา">เตรียมยา</option>
-                            <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
-                            <option value="จัดเก็บ">จัดเก็บ</option>
-                            <option value="จัดส่ง">จัดส่ง</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="errorDetail">ข้อผิดพลาด:</label>
-                        <select id="errorDetail" name="errorDetail" required>
-                            <option value="">เลือกข้อผิดพลาด</option>
-                            <!-- จะถูก populate ตามกระบวนการที่เลือก -->
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="correctItem">รายการที่ถูกต้อง:</label>
-                        <input type="text" id="correctItem" name="correctItem" 
-                               list="correctItemList" 
-                               placeholder="พิมพ์เพื่อค้นหารายการยาที่ถูกต้องตามใบสั่งยา" 
-                               autocomplete="off" required>
-                        <datalist id="correctItemList">
-                        </datalist>
-                        <small class="form-help">ค้นหาชื่อยาหรือรหัสยาที่ควรจะได้รับตามใบสั่งยา</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="incorrectItem">รายการยาที่ผิด: <span class="optional">(ไม่บังคับ)</span></label>
-                        <input type="text" id="incorrectItem" name="incorrectItem" 
-                               list="incorrectItemList" 
-                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด (สามารถระบุค่าว่างได้)" 
-                               autocomplete="off">
-                        <datalist id="incorrectItemList">
-                        </datalist>
-                        <small class="form-help">กรณีไม่มียาที่เตรียมผิด หรือยังไม่ได้เตรียมยา สามารถปล่อยว่างได้</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="cause">สาเหตุ:</label>
-                        <select id="cause" name="cause" required>
-                            <option value="">เลือกสาเหตุ</option>
-                            <option value="แคปซูลคล้ายกัน">แคปซูลคล้ายกัน</option>
-                            <option value="เม็ดคล้ายกัน">เม็ดคล้ายกัน</option>
-                            <option value="ชื่อยาคล้ายกัน">ชื่อยาคล้ายกัน</option>
-                            <option value="ชื่อยาออกเสียงคล้ายกัน">ชื่อยาออกเสียงคล้ายกัน</option>
-                            <option value="กล่องยา packaging คล้ายกัน">กล่องยา packaging คล้ายกัน</option>
-                            <option value="ยาหลายความแรง/ขนาด">ยาหลายความแรง/ขนาด</option>
-                            <option value="เก็บยาใกล้กัน">เก็บยาใกล้กัน</option>
-                            <option value="ลายมืออ่านยาก/ไม่ชัดเจน">ลายมืออ่านยาก/ไม่ชัดเจน</option>
-                            <option value="สื่อสารผิดพลาด">สื่อสารผิดพลาด</option>
-                            <option value="ภาระงานมากเกินไป">ภาระงานมากเกินไป</option>
-                            <option value="ขาดความรอบคอบ">ขาดความรอบคอบ</option>
-                            <option value="เร่งรีบ">เร่งรีบ</option>
-                            <option value="ไม่ได้ตรวจสอบซ้ำ">ไม่ได้ตรวจสอบซ้ำ</option>
-                            <option value="เภสัช/เจ้าหน้าที่ขาด">เภสัช/เจ้าหน้าที่ขาด</option>
-                            <option value="ห้องยาลง order ผิด">ห้องยาลง order ผิด</option>
-                            <option value="ไม่ได้ตรวจสอบยาหมดอายุ">ไม่ได้ตรวจสอบยาหมดอายุ</option>
-                            <option value="สาเหตุอื่นๆ">สาเหตุอื่นๆ</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="additionalDetails">รายละเอียดเพิ่มเติม (ถ้ามี):</label>
-                        <textarea id="additionalDetails" name="additionalDetails" rows="4" placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
-                    </div>
-
-                    <!-- HAD Information Section -->
-                    <div class="form-group had-section" style="display: none;">
-                        <div class="had-alert">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <span class="had-title">ตรวจพบ High Alert Drugs (HAD)</span>
-                        </div>
-                        <div class="had-details">
-                            <div class="had-info">
-                                <label>รายการ HAD ที่เกี่ยวข้อง:</label>
-                                <div id="hadDrugsList" class="had-drugs-list"></div>
-                            </div>
-                            <div class="had-risk">
-                                <label>ระดับความเสี่ยง:</label>
-                                <span id="hadRiskLevel" class="risk-badge risk-high">สูง</span>
-                            </div>
-                        </div>
-                        <!-- Hidden fields for HAD data -->
-                        <input type="hidden" id="hadInvolved" name="hadInvolved" value="false">
-                        <input type="hidden" id="hadDrugName" name="hadDrugName" value="">
-                        <input type="hidden" id="hadRiskLevel" name="hadRiskLevel" value="Regular">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="reporter">ผู้รายงาน:</label>
-                        <input type="text" id="reporter" name="reporter" readonly 
-                               value="กรุณาเข้าสู่ระบบก่อนใช้งาน" 
-                               style="background-color: #f5f5f5; cursor: not-allowed;">
-                        <small>ข้อมูลจากผู้ใช้ที่เข้าสู่ระบบ</small>
-                    </div>
-
-                    <button type="submit" class="submit-btn">
-                        <i class="fas fa-save"></i> บันทึก
-                    </button>
-                </form>
-            </div>
-        </section>
-
-        <!-- Dashboard Section -->
-        <section id="dashboard" class="section">
-            <div class="card">
-                <h2>แดชบอร์ดข้อผิดพลาด - การวิเคราะห์เชิงลึก</h2>
-                <div class="user-info" id="dashboardUserInfo" style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; border-left: 4px solid #2196f3;">
-                    <strong>ผู้ใช้:</strong> <span id="currentUserDisplay">-</span> | 
-                    <strong>กลุ่ม:</strong> <span id="currentGroupDisplay">-</span>
-                </div>
-
-                
-                <!-- SECTION 1: ภาพรวมระบบ -->
-                <h3 style="margin-top:10px;">ส่วนที่ 1: ภาพรวมระบบ</h3>
-                <div class="stats-grid" id="overviewStats">
-                    <div class="stat-card primary">
-                        <div class="stat-icon"><i class="fas fa-database"></i></div>
-                        <div class="stat-content">
-                            <h3>ทั้งหมด (All Time)</h3>
-                            <div class="stat-number" id="totalAllTime">0</div>
-                            <div class="stat-description">รวมทุกช่วงเวลา</div>
-                        </div>
-                    </div>
-                    <div class="stat-card warning">
-                        <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
-                        <div class="stat-content">
-                            <h3>เดือนนี้</h3>
-                            <div class="stat-number" id="totalMonth">0</div>
-                            <div class="stat-description">รวมในเดือนปัจจุบัน</div>
-                        </div>
-                    </div>
-                    <div class="stat-card secondary">
-                        <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
-                        <div class="stat-content">
-                            <h3>7 วันล่าสุด</h3>
-                            <div class="stat-number" id="totalWeek">0</div>
-                            <div class="stat-description">ย้อนหลัง 7 วัน</div>
-                        </div>
-                    </div>
-                    <div class="stat-card success">
-                        <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
-                        <div class="stat-content">
-                            <h3>วันนี้</h3>
-                            <div class="stat-number" id="totalToday">0</div>
-                            <div class="stat-description">ตั้งแต่ 00:00 น.</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SECTION 2: รายบุคคล -->
-                <h3 style="margin-top:30px;">ส่วนที่ 2: รายบุคคล (ผู้ใช้งาน)</h3>
-                <div class="card" style="padding:15px; margin-bottom:25px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                        <strong>สรุปรายงานตามผู้รายงาน</strong>
-                        <small>แสดงจำนวน (วันนี้ / 7 วัน / เดือนนี้ / ทั้งหมด)</small>
-                    </div>
-                    <!-- Current User Mini Stats -->
-                    <div id="userMiniStats" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px;">
-                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
-                            <div class="stat-content" style="padding:0;">
-                                <h4 style="font-size:14px; margin:0 0 4px;">วันนี้</h4>
-                                <div class="stat-number" id="userToday" style="font-size:20px;">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
-                            <div class="stat-content" style="padding:0;">
-                                <h4 style="font-size:14px; margin:0 0 4px;">7 วัน</h4>
-                                <div class="stat-number" id="userWeek" style="font-size:20px;">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
-                            <div class="stat-content" style="padding:0;">
-                                <h4 style="font-size:14px; margin:0 0 4px;">เดือนนี้</h4>
-                                <div class="stat-number" id="userMonth" style="font-size:20px;">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="flex:1 1 150px; min-width:140px; padding:10px 12px;">
-                            <div class="stat-content" style="padding:0;">
-                                <h4 style="font-size:14px; margin:0 0 4px;">ทั้งหมด</h4>
-                                <div class="stat-number" id="userAll" style="font-size:20px;">0</div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Per-user breakdown table (filteredให้เฉพาะผู้ใช้ปัจจุบัน) -->
-                    <div style="margin-top:18px; overflow-x:auto;">
-                        <table class="data-table" style="min-width:480px;">
-                            <thead>
-                                <tr>
-                                    <th>ผู้รายงาน</th>
-                                    <th>วันนี้</th>
-                                    <th>7 วัน</th>
-                                    <th>เดือนนี้</th>
-                                    <th>ทั้งหมด</th>
-                                </tr>
-                            </thead>
-                            <tbody id="userBreakdownBody">
-                                <tr><td colspan="5" style="text-align:center;">กำลังโหลด...</td></tr>
-                            </tbody>
-                        </table>
-                        <small style="display:block; margin-top:6px; color:#666;">หมายเหตุ: ตารางนี้แสดงเฉพาะข้อมูลของผู้ใช้ที่เข้าสู่ระบบ (สามารถขยายให้แสดงทุกคนได้ภายหลัง)</small>
-                    </div>
-                
-                </div>
-
-                <!-- SECTION 3: การวิเคราะห์เชิงลึก -->
-                <h3 style="margin-top:10px;">ส่วนที่ 3: การวิเคราะห์เชิงลึก (ตามตัวกรอง)</h3>
-                <!-- Analytics Filters -->
-                <div id="analyticsFilters" style="display:flex; flex-wrap:wrap; gap:12px; margin:10px 0 20px; align-items:flex-end; background:#f9fafc; padding:12px; border:1px solid #e0e6ef; border-radius:8px;">
-                    <div style="display:flex; flex-direction:column; min-width:160px;">
-                        <label for="analyticsErrorType" style="font-size:12px; font-weight:600; color:#333;">ประเภทผู้ป่วย</label>
-                        <select id="analyticsErrorType" style="padding:6px 8px;">
-                            <option value="all">ทั้งหมด</option>
-                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
-                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
-                        </select>
-                    </div>
-                    <div style="display:flex; flex-direction:column; min-width:140px;">
-                        <label for="analyticsProcessFilter" style="font-size:12px; font-weight:600; color:#333;">กระบวนการ</label>
-                        <select id="analyticsProcessFilter" style="padding:6px 8px;">
-                            <option value="all">ทั้งหมด</option>
-                            <option value="จัดยา">จัดยา</option>
-                            <option value="ลงข้อมูล">ลงข้อมูล</option>
-                            <option value="เตรียมยา">เตรียมยา</option>
-                            <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
-                            <option value="จัดเก็บ">จัดเก็บ</option>
-                            <option value="จัดส่ง">จัดส่ง</option>
-                        </select>
-                    </div>
-                    <div style="display:flex; flex-direction:column; min-width:140px;">
-                        <label for="analyticsPeriodMode" style="font-size:12px; font-weight:600; color:#333;">โหมดช่วงเวลา</label>
-                        <select id="analyticsPeriodMode" style="padding:6px 8px;">
-                            <option value="all">ทั้งหมด</option>
-                            <option value="year">ปี</option>
-                            <option value="month">เดือน</option>
-                        </select>
-                    </div>
-                    <div id="analyticsYearWrapper" style="display:none; flex-direction:column; min-width:120px;">
-                        <label for="analyticsYear" style="font-size:12px; font-weight:600; color:#333;">ปี</label>
-                        <select id="analyticsYear" style="padding:6px 8px;"></select>
-                    </div>
-                    <div id="analyticsMonthWrapper" style="display:none; flex-direction:column; min-width:140px;">
-                        <label for="analyticsMonth" style="font-size:12px; font-weight:600; color:#333;">เดือน</label>
-                        <select id="analyticsMonth" style="padding:6px 8px;">
-                            <option value="01">มกราคม</option>
-                            <option value="02">กุมภาพันธ์</option>
-                            <option value="03">มีนาคม</option>
-                            <option value="04">เมษายน</option>
-                            <option value="05">พฤษภาคม</option>
-                            <option value="06">มิถุนายน</option>
-                            <option value="07">กรกฎาคม</option>
-                            <option value="08">สิงหาคม</option>
-                            <option value="09">กันยายน</option>
-                            <option value="10">ตุลาคม</option>
-                            <option value="11">พฤศจิกายน</option>
-                            <option value="12">ธันวาคม</option>
-                        </select>
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:flex-end;">
-                        <button id="applyAnalyticsFilters" type="button" class="btn" style="background:#1976d2; color:#fff; padding:8px 14px; border-radius:6px; border:none; cursor:pointer;">
-                            <i class="fas fa-filter"></i> ใช้ตัวกรอง
-                        </button>
-                        <button id="resetAnalyticsFilters" type="button" class="btn" style="background:#607d8b; color:#fff; padding:8px 14px; border-radius:6px; border:none; cursor:pointer;">
-                            <i class="fas fa-undo"></i> รีเซ็ต
-                        </button>
-                    </div>
-                    <div id="analyticsFilterSummary" style="font-size:12px; color:#555; flex:1; min-width:200px;">ตัวกรอง: ทั้งหมด</div>
-                </div>
-
-                <!-- Analytics Charts Section -->
-                <div class="analytics-section">
-                    <div class="section-header">
-                        <h3><i class="fas fa-chart-bar"></i> การวิเคราะห์ข้อมูลเชิงลึก</h3>
-                        <p>การวิเคราะห์รูปแบบและแนวโน้มของข้อผิดพลาดในการจ่ายยา</p>
-                    </div>
-                    
-                    <div class="analytics-grid">
-                        <!-- Error Details Analysis -->
-                        <div class="analytics-card error-card" style="--card-index: 0;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-exclamation-triangle"></i> ข้อผิดพลาด</h4>
-                                <div class="card-actions">
-                                    <select id="errorProcessFilter" onchange="filterErrorByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
-                                        <option value="all">ทุกกระบวนการ</option>
-                                        <option value="จัดยา">จัดยา</option>
-                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
-                                        <option value="เตรียมยา">เตรียมยา</option>
-                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
-                                        <option value="จัดเก็บ">จัดเก็บ</option>
-                                        <option value="จัดส่ง">จัดส่ง</option>
-                                    </select>
-                                    <button onclick="refreshChart('error')" class="btn-icon" title="รีเฟรชกราฟ">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="errorChart" width="420" height="320"></canvas>
-                            </div>
-                            <div class="chart-summary">
-                                <div class="summary-item">
-                                    <span class="label">ข้อผิดพลาดหลัก:</span>
-                                    <span class="value" id="topError">-</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">กระบวนการ:</span>
-                                    <span class="value" id="selectedErrorProcess">ทุกกระบวนการ</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">จำนวนรายการ:</span>
-                                    <span class="value" id="errorItemCount">0</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Cause Analysis -->
-                        <div class="analytics-card cause-card" style="--card-index: 1;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-search"></i> สาเหตุของข้อผิดพลาด</h4>
-                                <div class="card-actions">
-                                    <select id="processFilter" onchange="filterCauseByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
-                                        <option value="all">ทุกกระบวนการ</option>
-                                        <option value="จัดยา">จัดยา</option>
-                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
-                                        <option value="เตรียมยา">เตรียมยา</option>
-                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
-                                        <option value="จัดเก็บ">จัดเก็บ</option>
-                                        <option value="จัดส่ง">จัดส่ง</option>
-                                    </select>
-                                    <button onclick="refreshChart('cause')" class="btn-icon" title="รีเฟรชกราฟ">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="causeChart" width="420" height="320"></canvas>
-                            </div>
-                            <div class="chart-summary">
-                                <div class="summary-item">
-                                    <span class="label">สาเหตุหลัก:</span>
-                                    <span class="value" id="topCause">-</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">กระบวนการ:</span>
-                                    <span class="value" id="selectedProcess">ทุกกระบวนการ</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">จำนวนรายการ:</span>
-                                    <span class="value" id="causeItemCount">0</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Drug Statistics -->
-                        <div class="analytics-card drug-card" style="--card-index: 2;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-pills"></i> รายการยาที่ถูกต้อง</h4>
-                                <div class="card-actions">
-                                    <select id="drugProcessFilter" onchange="filterDrugByProcess()" style="margin-right: 10px; padding: 5px 8px; border-radius: 4px; border: 1px solid #ddd;">
-                                        <option value="all">ทุกกระบวนการ</option>
-                                        <option value="จัดยา">จัดยา</option>
-                                        <option value="ลงข้อมูล">ลงข้อมูล</option>
-                                        <option value="เตรียมยา">เตรียมยา</option>
-                                        <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
-                                        <option value="จัดเก็บ">จัดเก็บ</option>
-                                        <option value="จัดส่ง">จัดส่ง</option>
-                                    </select>
-                                    <button onclick="refreshChart('drug')" class="btn-icon" title="รีเฟรชกราฟ">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="drugChart" width="420" height="320"></canvas>
-                            </div>
-                            <div class="chart-summary">
-                                <div class="summary-item">
-                                    <span class="label">ยาหลัก:</span>
-                                    <span class="value" id="topDrug">-</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">กระบวนการ:</span>
-                                    <span class="value" id="selectedDrugProcess">ทุกกระบวนการ</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">จำนวนรายการ:</span>
-                                    <span class="value" id="drugItemCount">0</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Process Analysis -->
-                        <div class="analytics-card process-card" style="--card-index: 3;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-cogs"></i> การกระจายตามกระบวนการ</h4>
-                                <div class="card-actions">
-                                    <button onclick="refreshChart('process')" class="btn-icon" title="รีเฟรชกราฟ">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="processChart" width="420" height="320"></canvas>
-                            </div>
-                            <div class="chart-summary">
-                                <div class="summary-item">
-                                    <span class="label">กระบวนการหลัก:</span>
-                                    <span class="value" id="topProcess">-</span>
-                                </div>
-                                <div class="summary-item">
-                                    <span class="label">จำนวน:</span>
-                                    <span class="value" id="topProcessCount">0</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Time Analysis -->
-                        <div class="analytics-card time-card" style="--card-index: 4;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-clock"></i> การกระจายตามช่วงเวลา</h4>
-                            </div>
-                            <div class="time-distribution">
-                                <div class="time-slot" style="--slot-index: 0;">
-                                    <div class="time-header">
-                                        <span class="time-label">เวรเช้า (08:00-16:00)</span>
-                                        <span class="time-count" id="morningCount">0</span>
-                                    </div>
-                                    <div class="time-bar">
-                                        <div class="time-fill morning" id="morningBar" style="width: 0%"></div>
-                                    </div>
-                                    <div class="time-percentage" id="morningPercent">0%</div>
-                                </div>
-                                <div class="time-slot" style="--slot-index: 1;">
-                                    <div class="time-header">
-                                        <span class="time-label">เวรบ่าย (16:00-24:00)</span>
-                                        <span class="time-count" id="afternoonCount">0</span>
-                                    </div>
-                                    <div class="time-bar">
-                                        <div class="time-fill afternoon" id="afternoonBar" style="width: 0%"></div>
-                                    </div>
-                                    <div class="time-percentage" id="afternoonPercent">0%</div>
-                                </div>
-                                <div class="time-slot" style="--slot-index: 2;">
-                                    <div class="time-header">
-                                        <span class="time-label">เวรดึก (24:00-08:00)</span>
-                                        <span class="time-count" id="nightCount">0</span>
-                                    </div>
-                                    <div class="time-bar">
-                                        <div class="time-fill night" id="nightBar" style="width: 0%"></div>
-                                    </div>
-                                    <div class="time-percentage" id="nightPercent">0%</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Location Ranking -->
-                        <div class="analytics-card location-card" style="--card-index: 5;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-map-marker-alt"></i> สถานที่เกิดเหตุบ่อยที่สุด</h4>
-                            </div>
-                            <div class="location-ranking" id="locationRanking">
-                                <div class="ranking-item">
-                                    <div class="rank-badge">1</div>
-                                    <div class="location-info">
-                                        <div class="location-name">กำลังโหลด...</div>
-                                        <div class="location-count">0 ครั้ง</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Monthly Trend -->
-                        <div class="analytics-card full-width trend-card" style="--card-index: 6;">
-                            <div class="card-header">
-                                <h4><i class="fas fa-chart-line"></i> แนวโน้มรายเดือน (6 เดือนล่าสุด)</h4>
-                                <div class="card-actions">
-                                    <select id="trendPeriod" onchange="updateTrendChart()">
-                                        <option value="6">6 เดือน</option>
-                                        <option value="12">12 เดือน</option>
-                                        <option value="24">24 เดือน</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="chart-container large">
-                                <canvas id="trendChart" width="800" height="300"></canvas>
-                            </div>
-                            <div class="trend-insights">
-                                <div class="insight-item">
-                                    <i class="fas fa-arrow-up text-danger"></i>
-                                    <span>เดือนที่มีข้อผิดพลาดสูงสุด: <strong id="peakMonth">-</strong></span>
-                                </div>
-                                <div class="insight-item">
-                                    <i class="fas fa-arrow-down text-success"></i>
-                                    <span>เดือนที่มีข้อผิดพลาดต่ำสุด: <strong id="lowMonth">-</strong></span>
-                                </div>
-                                <div class="insight-item">
-                                    <i class="fas fa-percentage text-info"></i>
-                                    <span>อัตราการเปลี่ยนแปลง: <strong id="changeRate">-</strong></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Enhanced Data Table -->
-                <div class="data-table-section">
-                    <div class="section-header">
-                        <h3><i class="fas fa-table"></i> ตารางข้อมูลรายละเอียด</h3>
-                        <div class="table-controls">
-                            <input type="text" id="tableSearch" placeholder="ค้นหาในตาราง..." class="search-input">
-                            <select id="tablePageSize" class="page-size-select">
-                                <option value="25">25 รายการ</option>
-                                <option value="50">50 รายการ</option>
-                                <option value="100">100 รายการ</option>
-                            </select>
-                            <button onclick="exportTableData()" class="export-table-btn">
-                                <i class="fas fa-file-excel"></i> ส่งออกตาราง
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="data-table-container">
-                        <div class="table-legend">
-                            <span class="legend-item">
-                                <span class="legend-color my-report"></span>
-                                รายงานของคุณ
-                            </span>
-                            <span class="legend-item">
-                                <span class="legend-color high-priority"></span>
-                                ข้อผิดพลาดสำคัญ
-                            </span>
-                        </div>
-                        <div class="table-wrapper">
-                            <table id="errorTable" class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th class="sortable" data-sort="reportId">
-                                            <span>เลขที่รายงาน</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="date">
-                                            <span>วันที่</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="shift">
-                                            <span>เวร</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="type">
-                                            <span>ประเภท</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="location">
-                                            <span>สถานที่</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="process">
-                                            <span>กระบวนการ</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="error">
-                                            <span>ข้อผิดพลาด</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th class="sortable" data-sort="reporter">
-                                            <span>ผู้รายงาน</span>
-                                            <i class="fas fa-sort"></i>
-                                        </th>
-                                        <th>การดำเนินการ</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="errorTableBody">
-                                    <tr>
-                                        <td colspan="9" class="no-data">
-                                            <div class="no-data-content">
-                                                <i class="fas fa-database"></i>
-                                                <p>ไม่มีข้อมูล</p>
-                                                <small>กดปุ่ม "รีเฟรชข้อมูล" เพื่อโหลดจาก Google Sheets</small>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Pagination -->
-                        <div class="table-pagination">
-                            <div class="pagination-info">
-                                แสดง <span id="showingStart">0</span> - <span id="showingEnd">0</span> 
-                                จาก <span id="totalRecords">0</span> รายการ
-                            </div>
-                            <div class="pagination-controls">
-                                <button id="prevPage" class="pagination-btn" disabled>
-                                    <i class="fas fa-chevron-left"></i> ก่อนหน้า
-                                </button>
-                                <div id="pageNumbers" class="page-numbers">
-                                    <span class="page-number active">1</span>
-                                </div>
-                                <button id="nextPage" class="pagination-btn" disabled>
-                                    ถัดไป <i class="fas fa-chevron-right"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
         <!-- Drug List Section -->
-        <section id="druglist" class="section">
+        <section id="druglist" class="section active">
             <div class="card">
                 <div class="section-header">
                     <h2><i class="fas fa-pills"></i> รายการยา</h2>
-                    <button id="addDrugBtn" class="btn btn-primary" onclick="showAddDrugForm()">
-                        <i class="fas fa-plus"></i> เพิ่มยา
-                    </button>
+                    <div class="drug-header-actions">
+                        <button id="syncExternalDrugListBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> อัปเดตรายการยาจากฐานข้อมูลภายนอก
+                        </button>
+                        <button id="syncDrugToSheetsBtn" class="btn btn-secondary" title="ดึงข้อมูลยาจาก MySQL แล้วอัปเดตลง Google Sheets">
+                            <i class="fas fa-cloud-upload-alt"></i> Sync MySQL → Sheets
+                        </button>
+                        <button id="addDrugBtn" class="btn btn-primary" onclick="showAddDrugForm()">
+                            <i class="fas fa-plus"></i> เพิ่มยา
+                        </button>
+                    </div>
+                </div>
+                <div class="external-sync-meta">
+                    <small>สถานะ Sync ภายนอก: <strong id="externalSyncStatus">ยังไม่ตั้งค่า</strong></small>
+                    <small>อัปเดตล่าสุด: <strong id="externalSyncLastUpdated">-</strong></small>
                 </div>
 
                 <!-- Add Drug Form -->
-                <div id="addDrugForm" class="card" style="display: none; margin-bottom: 20px;">
+                <div id="addDrugForm" class="card" style="display: none; margin-bottom: 16px;">
                     <h3>เพิ่มรายการยาใหม่</h3>
                     <form id="drugForm">
                         <div class="form-row">
@@ -841,6 +164,30 @@
                                 <option value="Discontinued">ยกเลิก (Discontinued)</option>
                             </select>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="drugUnit">หน่วย (Unit):</label>
+                                <input type="text" id="drugUnit" name="drugUnit" placeholder="เช่น TAB, CAP, INJ">
+                            </div>
+                            <div class="form-group">
+                                <label for="drugStrength">ความแรง (Strength):</label>
+                                <input type="text" id="drugStrength" name="drugStrength" placeholder="เช่น 500mg, 250mg/5ml">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="drugDosageForm">รูปแบบยา (Dosage Form):</label>
+                                <input type="text" id="drugDosageForm" name="drugDosageForm" placeholder="เช่น Tablet, Capsule, Injection">
+                            </div>
+                            <div class="form-group">
+                                <label for="drugTmtCode">รหัส TMT (TMT Code):</label>
+                                <input type="text" id="drugTmtCode" name="drugTmtCode" placeholder="รหัส TMT">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="drugUnitPrice">ราคาต่อหน่วย (Unit Price):</label>
+                            <input type="number" id="drugUnitPrice" name="drugUnitPrice" placeholder="0.00" step="0.01" min="0">
+                        </div>
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> บันทึกยา
@@ -864,7 +211,7 @@
                                 placeholder="ค้นหารายการยา... (รองรับ fuzzy search)"
                                 oninput="filterDrugsModern()"
                                 autocomplete="off">
-                            <button class="clear-search-btn" id="clearSearchBtn" onclick="clearDrugSearch()" style="display: none;">
+                            <button class="clear-search-btn" id="clearSearchBtn" onclick="clearDrugSearch()" style="display:none;">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
@@ -913,7 +260,7 @@
                     </div>
                     <div class="search-results-info" id="searchResultsInfo">
                         <span id="resultCount">แสดง 0 รายการ</span>
-                        <button class="reset-filters-btn" onclick="resetDrugFilters()" style="display: none;" id="resetFiltersBtn">
+                        <button class="reset-filters-btn" onclick="resetDrugFilters()" style="display:none;" id="resetFiltersBtn">
                             <i class="fas fa-undo"></i> รีเซ็ตตัวกรอง
                         </button>
                     </div>
@@ -929,19 +276,22 @@
                                 <th>กลุ่มยา</th>
                                 <th>HAD</th>
                                 <th>สถานะ</th>
+                                <th>ความแรง</th>
+                                <th>รูปแบบยา</th>
+                                <th>หน่วย</th>
                                 <th>การจัดการ</th>
                             </tr>
                         </thead>
                         <tbody id="drugTableBody">
                             <tr>
-                                <td colspan="6" class="text-center">กำลังโหลดข้อมูล...</td>
+                                <td colspan="9" class="text-center">กำลังโหลดข้อมูล...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Drug Statistics -->
-                <div class="stats-grid" style="margin-top: 20px;">
+                <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value" id="totalDrugs">0</div>
                         <div class="stat-label">รายการยาทั้งหมด</div>
@@ -965,7 +315,21 @@
         <!-- Settings Section -->
         <section id="settings" class="section">
             <div class="card">
-                <h2>ตั้งค่า Google Sheets</h2>
+        <h2>ตั้งค่า Google Sheets</h2>
+
+                <!-- Setup Guide Banner -->
+                <div id="setupGuideBanner" class="setup-guide-banner" style="display:none;">
+                    <strong><i class="fas fa-exclamation-triangle"></i> ยังไม่ได้กำหนดค่า Web App URL</strong>
+                    <p>ระบบกำลังทำงานใน <strong>Demo Mode</strong> — ข้อมูลจะไม่ถูกบันทึกจริง กรุณาตั้งค่าให้ครบก่อน Deploy:</p>
+                    <ol>
+                        <li>คัดลอก <code>apps-script.js</code> ไปวางใน Google Apps Script</li>
+                        <li>Deploy → New deployment → Web App → Execute as: <strong>Me</strong>, Access: <strong>Anyone</strong></li>
+                        <li>คัดลอก Web App URL มาวางในช่อง "Google Apps Script Web App URL" ด้านล่าง</li>
+                        <li>กรอก Spreadsheet ID ของ Google Sheet ที่จะใช้เก็บข้อมูล</li>
+                        <li>เรียก <code>migrateUsersToHashedPasswords()</code> ในหน้า Apps Script Editor เพื่อ hash password ผู้ใช้</li>
+                    </ol>
+                </div>
+
                 <form id="settingsForm">
                     <div class="form-group">
                         <label for="apiKey">Google Sheets API Key:</label>
@@ -999,7 +363,7 @@
                     <div class="form-group">
                         <label for="webAppUrl">Google Apps Script Web App URL:</label>
                         <input type="url" id="webAppUrl" name="webAppUrl" placeholder="https://script.google.com/macros/s/.../exec">
-                        <div class="cors-info" style="margin-top: 10px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; font-size: 0.9rem;">
+                        <div class="cors-info">
                             <strong>⚠️ หมายเหตุ CORS:</strong><br>
                             • หากเกิด CORS error ให้ deploy Apps Script ใหม่<br>
                             • ตั้งค่า Execute as: "Me", Who has access: "Anyone"<br>
@@ -1008,6 +372,68 @@
                         </div>
                         <small>จำเป็นสำหรับการบันทึกข้อมูล (ดูคำแนะนำด้านล่าง)</small>
                     </div>
+
+                    <div class="form-group">
+                        <label for="externalDrugSourceUrl">External Drug Source URL:</label>
+                        <input type="url" id="externalDrugSourceUrl" name="externalDrugSourceUrl" placeholder="https://example.com/api/drugs">
+                        <small>URL สำหรับดึงรายการยาจากฐานข้อมูลภายนอก</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="externalDrugSourceToken">External API Token (ถ้ามี):</label>
+                        <input type="password" id="externalDrugSourceToken" name="externalDrugSourceToken" placeholder="Bearer token">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="externalDrugSourceFormat">รูปแบบข้อมูลภายนอก:</label>
+                            <select id="externalDrugSourceFormat" name="externalDrugSourceFormat">
+                                <option value="json">JSON</option>
+                                <option value="csv">CSV</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="externalDrugAutoSyncMinutes">Auto Sync ทุก (นาที):</label>
+                            <input type="number" id="externalDrugAutoSyncMinutes" name="externalDrugAutoSyncMinutes" min="0" value="0" placeholder="0 = ปิด">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="externalDrugDataPath">JSON Data Path (ถ้ามี):</label>
+                        <input type="text" id="externalDrugDataPath" name="externalDrugDataPath" placeholder="เช่น data.items">
+                        <small>กรณีข้อมูลยาอยู่ nested object ให้ระบุ path เช่น <code>data.items</code></small>
+                    </div>
+                    <div class="external-tools-row">
+                        <button type="button" id="testExternalDrugConnectionBtn" class="btn btn-secondary">
+                            <i class="fas fa-vial"></i> ทดสอบการเชื่อมต่อ
+                        </button>
+                        <span id="externalDrugTestResult" class="external-test-result"></span>
+                    </div>
+                    <details class="external-schema-help">
+                        <summary>ตัวอย่างรูปแบบข้อมูล External Drug API</summary>
+                        <p>รองรับ JSON array ตรงๆ หรือ nested ผ่าน JSON Data Path และรองรับ CSV ที่มี header</p>
+                        <pre>{
+  "data": [
+    {
+      "drugCode": "PARA500",
+      "drugName": "Paracetamol 500mg",
+      "group": "Analgesic",
+      "had": "Regular",
+      "status": "Active"
+    },
+    {
+      "code": "INS001",
+      "name": "Insulin Regular",
+      "category": "Antidiabetic",
+      "highAlert": true,
+      "active": true
+    }
+  ]
+}</pre>
+                        <pre>drugCode,drugName,group,had,status
+"PARA500","Paracetamol 500mg","Analgesic","Regular","Active"
+"INS001","Insulin, Regular","Antidiabetic","High","Active"</pre>
+                    </details>
 
                     <button type="submit" class="submit-btn">
                         <i class="fas fa-save"></i> บันทึกการตั้งค่า
@@ -1041,9 +467,9 @@
                         <li><strong>ทดสอบ:</strong> คลิก "รีเฟรชรายชื่อผู้ใช้" เพื่อตรวจสอบการเชื่อมต่อ</li>
                     </ol>
                     
-                    <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #0066cc;">
-                        <h4 style="color: #0066cc; margin-top: 0;">Google Apps Script Code:</h4>
-                                                                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px;">// Minimal ตัวอย่าง (อัปเดต): Apps Script ไม่รองรับ setHeaders กับ ContentService
+                    <div class="setup-instructions" style="background: var(--color-accent-light); border-left-color: var(--color-accent); margin: 16px 0;">
+                        <h4>Google Apps Script Code:</h4>
+                        <pre style="background: #1E293B; color: #E2E8F0; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin-top: 8px;">// Minimal ตัวอย่าง (อัปเดต): Apps Script ไม่รองรับ setHeaders กับ ContentService
                         function jsonResponse(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);} 
                         function doPost(e){
                             try{
@@ -1078,9 +504,9 @@
                         }</pre>
                     </div>
                     
-                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #ffc107;">
-                        <h4 style="color: #856404; margin-top: 0;">หมายเหตุสำคัญ:</h4>
-                        <ul style="color: #856404; margin-bottom: 0;">
+                    <div class="setup-guide-banner" style="margin-top: 16px;">
+                        <h4>หมายเหตุสำคัญ:</h4>
+                        <ul style="margin-bottom: 0; padding-left: 20px;">
                             <li><strong>API Key</strong> ใช้สำหรับอ่านข้อมูลเท่านั้น (Users list)</li>
                             <li><strong>Web App URL</strong> จำเป็นสำหรับการบันทึกข้อมูล</li>
                             <li>หากไม่ตั้งค่า Web App จะไม่สามารถบันทึกข้อผิดพลาดได้</li>
@@ -1094,5 +520,10 @@
     <div id="notification" class="notification"></div>
 
     <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
 </body>
 </html>

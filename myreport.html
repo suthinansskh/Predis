@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุปรายงานรายบุคคล - Predispensing Error Recorder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Predis">
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body data-page="myreport">
+    <!-- Login Section -->
+    <section id="login" class="login-section active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <i class="fas fa-pills"></i>
+                    <h1>Predispensing Error Recorder</h1>
+                    <p>กรุณาเข้าสู่ระบบด้วย PS Code และรหัสผ่าน (4 ตัวท้ายของ ID13)</p>
+                </div>
+                
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="userCode">
+                            <i class="fas fa-user"></i> PS Code หรือ ID13:
+                        </label>
+                        <input type="text" id="userCode" name="userCode" required 
+                               placeholder="ใส่ PS Code หรือ ID13" autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-lock"></i> รหัสผ่าน:
+                        </label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="4 ตัวท้ายของ ID13" autocomplete="current-password">
+                    </div>
+                    
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+                    </button>
+                </form>
+                
+                <div class="login-info">
+                    <p><i class="fas fa-info-circle"></i> ติดต่อ IT ถ้าไม่สามารถเข้าสู่ระบบได้</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="container" style="display: none;">
+        <header>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1><i class="fas fa-user-chart"></i> สรุปรายงานรายบุคคล</h1>
+                    <p>สรุปจำนวนรายงานตามผู้ใช้งานที่เข้าสู่ระบบ</p>
+                </div>
+                <div class="header-right">
+                    <span id="currentUser" class="current-user">
+                        <i class="fas fa-user"></i> <span id="userName">Loading...</span>
+                    </span>
+                    <button id="logoutBtn" class="logout-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <nav>
+            <a href="report.html" class="nav-btn">
+                <i class="fas fa-plus"></i> บันทึกข้อผิดพลาด
+            </a>
+            <a href="dashboard.html" class="nav-btn">
+                <i class="fas fa-chart-bar"></i> แดชบอร์ด
+            </a>
+            <a href="myreport.html" class="nav-btn active">
+                <i class="fas fa-user-clock"></i> สรุปรายบุคคล
+            </a>
+            <a href="index.html#druglist" class="nav-btn" onclick="navigateTo(event, 'druglist')">
+                <i class="fas fa-pills"></i> รายการยา
+            </a>
+            <a href="index.html#settings" class="nav-btn" id="settingsNavBtn" onclick="navigateTo(event, 'settings')">
+                <i class="fas fa-cog"></i> ตั้งค่า
+            </a>
+        </nav>
+
+        <!-- My Report Section -->
+        <section id="myreport" class="section active">
+            <div class="card">
+                <h2><i class="fas fa-user-clock"></i> สรุปรายงานรายบุคคล</h2>
+                <div class="user-info" id="dashboardUserInfo">
+                    <strong>ผู้ใช้:</strong> <span id="currentUserDisplay">-</span> | 
+                    <strong>กลุ่ม:</strong> <span id="currentGroupDisplay">-</span>
+                </div>
+
+                <!-- สรุปรายบุคคล -->
+                <h3 class="dashboard-section-title">สรุปรายงานตามผู้รายงาน</h3>
+                <div class="per-user-card">
+                    <div class="per-user-card-header">
+                        <strong>จำนวนรายงานของคุณ</strong>
+                        <small>แสดงจำนวน (วันนี้ / 7 วัน / เดือนนี้ / ทั้งหมด)</small>
+                    </div>
+                    <div id="userMiniStats" class="user-mini-stats">
+                        <div class="user-mini-stat-card">
+                            <div class="stat-content">
+                                <h4>วันนี้</h4>
+                                <div class="stat-number" id="userToday">0</div>
+                            </div>
+                        </div>
+                        <div class="user-mini-stat-card">
+                            <div class="stat-content">
+                                <h4>7 วัน</h4>
+                                <div class="stat-number" id="userWeek">0</div>
+                            </div>
+                        </div>
+                        <div class="user-mini-stat-card">
+                            <div class="stat-content">
+                                <h4>เดือนนี้</h4>
+                                <div class="stat-number" id="userMonth">0</div>
+                            </div>
+                        </div>
+                        <div class="user-mini-stat-card">
+                            <div class="stat-content">
+                                <h4>ทั้งหมด</h4>
+                                <div class="stat-number" id="userAll">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-breakdown-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ผู้รายงาน</th>
+                                    <th>วันนี้</th>
+                                    <th>7 วัน</th>
+                                    <th>เดือนนี้</th>
+                                    <th>ทั้งหมด</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userBreakdownBody">
+                                <tr><td colspan="5" class="text-center">กำลังโหลด...</td></tr>
+                            </tbody>
+                        </table>
+                        <small class="user-breakdown-note">หมายเหตุ: ตารางนี้แสดงเฉพาะข้อมูลของผู้ใช้ที่เข้าสู่ระบบ (สามารถขยายให้แสดงทุกคนได้ภายหลัง)</small>
+                    </div>
+                </div>
+
+                <!-- จำนวนรายงานแต่ละเดือน รายปี -->
+                <h3 class="dashboard-section-title">จำนวนรายงานแต่ละเดือน (รายปี ตาม Login)</h3>
+                <div class="monthly-report-card">
+                    <div class="monthly-report-header">
+                        <strong><i class="fas fa-calendar-check"></i> สรุปจำนวนรายงานแต่ละเดือน</strong>
+                        <div class="monthly-report-controls">
+                            <select id="monthlyReportYear" onchange="buildMonthlyReportByYear()">
+                                <option value="">กำลังโหลด...</option>
+                            </select>
+                            <select id="monthlyReportUserScope" onchange="buildMonthlyReportByYear()">
+                                <option value="me">เฉพาะของฉัน</option>
+                                <option value="all">ทั้งหมด</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="monthly-report-chart-container">
+                        <canvas id="monthlyReportChart" width="800" height="280"></canvas>
+                    </div>
+                    <div class="monthly-report-table-wrapper">
+                        <table class="data-table monthly-report-table">
+                            <thead>
+                                <tr>
+                                    <th>เดือน</th>
+                                    <th>ม.ค.</th>
+                                    <th>ก.พ.</th>
+                                    <th>มี.ค.</th>
+                                    <th>เม.ย.</th>
+                                    <th>พ.ค.</th>
+                                    <th>มิ.ย.</th>
+                                    <th>ก.ค.</th>
+                                    <th>ส.ค.</th>
+                                    <th>ก.ย.</th>
+                                    <th>ต.ค.</th>
+                                    <th>พ.ย.</th>
+                                    <th>ธ.ค.</th>
+                                    <th>รวม</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monthlyReportBody">
+                                <tr><td colspan="14" class="text-center">กำลังโหลด...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+    "mcpServers": {
+        "predis-sheets": {
+            "command": "node",
+            "args": [
+                "D:\\Project\\Predis-1\\mcp-server\\index.js"
+            ],
+            "env": {
+                "SPREADSHEET_ID": "ใส่-Spreadsheet-ID-ที่นี่",
+                "GOOGLE_APPLICATION_CREDENTIALS": "D:\\Project\\Predis-1\\mcp-server\\credentials.json",
+                "SHEET_ERRORS": "Predispensing_Errors",
+                "SHEET_USERS": "Users",
+                "SHEET_DRUGS": "Drug_List"
+            }
+        }
+    }
+}

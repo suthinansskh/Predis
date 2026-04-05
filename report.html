@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>บันทึกข้อผิดพลาด - Predispensing Error Recorder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Predis">
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body data-page="report">
+    <!-- Login Section -->
+    <section id="login" class="login-section active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <i class="fas fa-pills"></i>
+                    <h1>Predispensing Error Recorder</h1>
+                    <p>กรุณาเข้าสู่ระบบด้วย PS Code และรหัสผ่าน (4 ตัวท้ายของ ID13)</p>
+                </div>
+                
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="userCode">
+                            <i class="fas fa-user"></i> PS Code หรือ ID13:
+                        </label>
+                        <input type="text" id="userCode" name="userCode" required 
+                               placeholder="ใส่ PS Code หรือ ID13" autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-lock"></i> รหัสผ่าน:
+                        </label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="4 ตัวท้ายของ ID13" autocomplete="current-password">
+                    </div>
+                    
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i> เข้าสู่ระบบ
+                    </button>
+                </form>
+                
+                <div class="login-info">
+                    <p><i class="fas fa-info-circle"></i> ติดต่อ IT ถ้าไม่สามารถเข้าสู่ระบบได้</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="container" style="display: none;">
+        <header>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1><i class="fas fa-pills"></i> บันทึก Predispensing Error</h1>
+                    <p>กรอกข้อมูลข้อผิดพลาดก่อนจ่ายยา</p>
+                </div>
+                <div class="header-right">
+                    <span id="currentUser" class="current-user">
+                        <i class="fas fa-user"></i> <span id="userName">Loading...</span>
+                    </span>
+                    <button id="logoutBtn" class="logout-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <nav>
+            <a href="report.html" class="nav-btn active">
+                <i class="fas fa-plus"></i> บันทึกข้อผิดพลาด
+            </a>
+            <a href="dashboard.html" class="nav-btn">
+                <i class="fas fa-chart-bar"></i> แดชบอร์ด
+            </a>
+            <a href="myreport.html" class="nav-btn">
+                <i class="fas fa-user-clock"></i> สรุปรายบุคคล
+            </a>
+            <a href="index.html#druglist" class="nav-btn" onclick="navigateTo(event, 'druglist')">
+                <i class="fas fa-pills"></i> รายการยา
+            </a>
+            <a href="index.html#settings" class="nav-btn" id="settingsNavBtn" onclick="navigateTo(event, 'settings')">
+                <i class="fas fa-cog"></i> ตั้งค่า
+            </a>
+        </nav>
+
+        <!-- Error Report Form Section -->
+        <section id="form" class="section active">
+            <div class="card">
+                <h2>บันทึก Predispensing Error</h2>
+                <form id="errorForm">
+                    <div class="form-group">
+                        <label for="eventDate">วันที่เกิดเหตุการณ์:</label>
+                        <input type="date" id="eventDate" name="eventDate" required>
+                    </div>
+
+                    <input type="hidden" id="reportId" name="reportId">
+
+                    <div class="form-group">
+                        <label for="shift">เวร:</label>
+                        <select id="shift" name="shift" required>
+                            <option value="">เลือกเวร</option>
+                            <option value="เช้า">เช้า (08:00-16:00)</option>
+                            <option value="บ่าย">บ่าย (16:00-24:00)</option>
+                            <option value="ดึก">ดึก (24:00-08:00)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="errorType">ประเภท:</label>
+                        <select id="errorType" name="errorType" required>
+                            <option value="">เลือกประเภท</option>
+                            <option value="ผู้ป่วยนอก">ผู้ป่วยนอก</option>
+                            <option value="ผู้ป่วยใน">ผู้ป่วยใน</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">สถานที่เกิดเหตุการณ์:</label>
+                        <select id="location" name="location" required>
+                            <option value="">เลือกสถานที่</option>
+                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น1">ห้องจ่ายยาผู้ป่วยนอกชั้น1</option>
+                            <option value="ห้องจ่ายยาผู้ป่วยนอกชั้น2">ห้องจ่ายยาผู้ป่วยนอกชั้น2</option>
+                            <option value="ห้องจ่ายยาจิตเวช">ห้องจ่ายยาจิตเวช</option>
+                            <option value="ห้องจ่ายยาคลินคพิเศษ">ห้องจ่ายยาคลินคพิเศษ</option>
+                            <option value="ห้องยาผู้ป่วยใน">ห้องยาผู้ป่วยใน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ฉุกเฉิน">ห้องยาอุบัติเหตุ-ฉุกเฉิน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยใน">ห้องยาอุบัติเหตุ-ผู้ป่วยใน</option>
+                            <option value="ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน">ห้องยาอุบัติเหตุ-ผู้ป่วยกลับบ้าน</option>
+                            <option value="ห้องจ่ายเวชภัณฑ์">ห้องจ่ายเวชภัณฑ์</option>
+                            <option value="งานจัดซื้อยาและเวชภัณฑ์">งานจัดซื้อยาและเวชภัณฑ์</option>
+                            <option value="งานคลังยา">งานคลังยา</option>
+                            <option value="งานผลิตยา">งานผลิตยา</option>
+                            <option value="งานเคมีบำบัด">งานเคมีบำบัด</option>
+                            <option value="คลังเวชภัณฑ์">งานคลังเวชภัณฑ์</option>
+                            <option value="รพ.สต.">รพ.สต.</option>
+                            <option value="อื่นๆ">อื่นๆ (ระบุในรายละเอียดเพิ่มเติม)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="substationGroup" style="display:none;">
+                        <label for="substation">เลือกโรงพยาบาลส่งเสริมสุขภาพตำบล</label>
+                        <select id="substation">
+                            <option value="">เลือก รพ.สต.</option>
+                            <option value="รพ.สต.คูซอด">รพ.สต.คูซอด</option>
+                            <option value="รพ.สต.แทง">รพ.สต.แทง</option>
+                            <option value="รพ.สต.หนองคู">รพ.สต.หนองคู</option>
+                            <option value="รพ.สต.ตะดอบ">รพ.สต.ตะดอบ</option>
+                            <option value="รพ.สต.หนองครก">รพ.สต.หนองครก</option>
+                            <option value="รพ.สต.กุดโง้ง">รพ.สต.กุดโง้ง</option>
+                            <option value="รพ.สต.โพนค้อ">รพ.สต.โพนค้อ</option>
+                            <option value="รพ.สต.หนองแว้ง">รพ.สต.หนองแว้ง</option>
+                            <option value="รพ.สต.โนนแกด">รพ.สต.โนนแกด</option>
+                            <option value="รพ.สต.หนองไฮ">รพ.สต.หนองไฮ</option>
+                            <option value="รพ.สต.หนองแก้ว">รพ.สต.หนองแก้ว</option>
+                            <option value="รพ.สต.น้ำคำ">รพ.สต.น้ำคำ</option>
+                            <option value="รพ.สต.หนองโน">รพ.สต.หนองโน</option>
+                            <option value="รพ.สต.โพธิ์">รพ.สต.โพธิ์</option>
+                            <option value="รพ.สต.สร้างเรือง">รพ.สต.สร้างเรือง</option>
+                            <option value="รพ.สต.ก้านเหลือง">รพ.สต.ก้านเหลือง</option>
+                            <option value="รพ.สต.หนองไผ่">รพ.สต.หนองไผ่</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="process">กระบวนการ:</label>
+                        <select id="process" name="process" required>
+                            <option value="">เลือกกระบวนการ</option>
+                            <option value="จัดยา">จัดยา</option>
+                            <option value="ลงข้อมูล">ลงข้อมูล</option>
+                            <option value="เตรียมยา">เตรียมยา</option>
+                            <option value="คิดค่าใช้จ่าย">คิดค่าใช้จ่าย</option>
+                            <option value="จัดเก็บ">จัดเก็บ</option>
+                            <option value="จัดส่ง">จัดส่ง</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="errorDetail">ข้อผิดพลาด:</label>
+                        <select id="errorDetail" name="errorDetail" required>
+                            <option value="">เลือกข้อผิดพลาด</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="correctItem">รายการที่ถูกต้อง:</label>
+                        <input type="text" id="correctItem" name="correctItem" 
+                               list="correctItemList" 
+                               placeholder="พิมพ์เพื่อค้นหารายการยาที่ถูกต้องตามใบสั่งยา" 
+                               autocomplete="off" required>
+                        <datalist id="correctItemList">
+                        </datalist>
+                        <small class="form-help">ค้นหาชื่อยาหรือรหัสยาที่ควรจะได้รับตามใบสั่งยา</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="incorrectItem">รายการยาที่ผิด: <span class="optional">(ไม่บังคับ)</span></label>
+                        <input type="text" id="incorrectItem" name="incorrectItem" 
+                               list="incorrectItemList" 
+                               placeholder="พิมพ์เพื่อค้นหารายการยาที่เตรียมผิด (สามารถระบุค่าว่างได้)" 
+                               autocomplete="off">
+                        <datalist id="incorrectItemList">
+                        </datalist>
+                        <small class="form-help">กรณีไม่มียาที่เตรียมผิด หรือยังไม่ได้เตรียมยา สามารถปล่อยว่างได้</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cause">สาเหตุ:</label>
+                        <select id="cause" name="cause" required>
+                            <option value="">เลือกสาเหตุ</option>
+                            <option value="แคปซูลคล้ายกัน">แคปซูลคล้ายกัน</option>
+                            <option value="เม็ดคล้ายกัน">เม็ดคล้ายกัน</option>
+                            <option value="ชื่อยาคล้ายกัน">ชื่อยาคล้ายกัน</option>
+                            <option value="ชื่อยาออกเสียงคล้ายกัน">ชื่อยาออกเสียงคล้ายกัน</option>
+                            <option value="กล่องยา packaging คล้ายกัน">กล่องยา packaging คล้ายกัน</option>
+                            <option value="ยาหลายความแรง/ขนาด">ยาหลายความแรง/ขนาด</option>
+                            <option value="เก็บยาใกล้กัน">เก็บยาใกล้กัน</option>
+                            <option value="ลายมืออ่านยาก/ไม่ชัดเจน">ลายมืออ่านยาก/ไม่ชัดเจน</option>
+                            <option value="สื่อสารผิดพลาด">สื่อสารผิดพลาด</option>
+                            <option value="ภาระงานมากเกินไป">ภาระงานมากเกินไป</option>
+                            <option value="ขาดความรอบคอบ">ขาดความรอบคอบ</option>
+                            <option value="เร่งรีบ">เร่งรีบ</option>
+                            <option value="ไม่ได้ตรวจสอบซ้ำ">ไม่ได้ตรวจสอบซ้ำ</option>
+                            <option value="เภสัช/เจ้าหน้าที่ขาด">เภสัช/เจ้าหน้าที่ขาด</option>
+                            <option value="ห้องยาลง order ผิด">ห้องยาลง order ผิด</option>
+                            <option value="ไม่ได้ตรวจสอบยาหมดอายุ">ไม่ได้ตรวจสอบยาหมดอายุ</option>
+                            <option value="สาเหตุอื่นๆ">สาเหตุอื่นๆ</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="additionalDetails">รายละเอียดเพิ่มเติม (ถ้ามี):</label>
+                        <textarea id="additionalDetails" name="additionalDetails" rows="4" placeholder="อธิบายรายละเอียดเพิ่มเติมของเหตุการณ์..."></textarea>
+                    </div>
+
+                    <!-- HAD Information Section -->
+                    <div class="form-group had-section" style="display: none;">
+                        <div class="had-alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span class="had-title">ตรวจพบ High Alert Drugs (HAD)</span>
+                        </div>
+                        <div class="had-details">
+                            <div class="had-info">
+                                <label>รายการ HAD ที่เกี่ยวข้อง:</label>
+                                <div id="hadDrugsList" class="had-drugs-list"></div>
+                            </div>
+                            <div class="had-risk">
+                                <label>ระดับความเสี่ยง:</label>
+                                <span id="hadRiskLevelDisplay" class="risk-badge risk-high">สูง</span>
+                            </div>
+                        </div>
+                        <input type="hidden" id="hadInvolved" name="hadInvolved" value="false">
+                        <input type="hidden" id="hadDrugName" name="hadDrugName" value="">
+                        <input type="hidden" id="hadRiskLevel" name="hadRiskLevel" value="Regular">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reporter">ผู้รายงาน:</label>
+                        <input type="text" id="reporter" name="reporter" readonly
+                               value="กรุณาเข้าสู่ระบบก่อนใช้งาน">
+                        <small>ข้อมูลจากผู้ใช้ที่เข้าสู่ระบบ</small>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-save"></i> บันทึก <span class="shortcut-hint">Ctrl+Enter</span>
+                    </button>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

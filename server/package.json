@@ -1,0 +1,25 @@
+{
+  "name": "predis-server",
+  "version": "1.0.0",
+  "description": "Predispensing Error Recorder — Express API Server",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "sync-drugs": "node sync-drugs.js",
+    "sync-drugs-sheets": "node sync-drugs.js --sheets"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "googleapis": "^144.0.0",
+    "mysql2": "^3.19.0",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
