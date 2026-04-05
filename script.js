@@ -2297,6 +2297,7 @@ function formatDate(dateString) {
 
 function populateTable(data) {
     const tableBody = document.getElementById('errorTableBody');
+    if (!tableBody) return; // Exit if not on the dashboard page
 
     if (!data || data.length === 0) {
         tableBody.innerHTML = `
