@@ -23,3 +23,15 @@ test('diffDrugs แยกรายการเพิ่ม/ลบ/เปลี�
     assert.deepEqual(removed.map(d => d.drugCode), ['A']);
     assert.deepEqual(changed.map(d => d.drugCode), ['B']);
 });
+
+test('applyOverrides ใช้ค่า HAD/สถานะที่แก้ในแอปแทนค่าจาก HOSxP', async () => {
+    const { applyOverrides } = await import('../tools/sync-drugs.js');
+    const drugs = [
+        { drugCode: '010', had: 'Regular', status: 'Active' },
+        { drugCode: 'MORPH10', had: 'Regular', status: 'Active' }
+    ];
+    const overrides = new Map([['010', { had: '', status: 'Inactive' }], ['MORPH10', { had: 'High', status: '' }]]);
+    const { drugs: out, applied } = applyOverrides(drugs, overrides);
+    assert.equal(applied, 2);
+    assert.deepEqual(out.map(d => [d.had, d.status]), [['Regular', 'Inactive'], ['High', 'Active']]);
+});

@@ -265,11 +265,11 @@ function renderDrugTable() {
             <td>${escapeHtml(drug.unit || '-')}</td>
             <td>
                 ${canManage ? `
-                <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข">
+                <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข HAD / สถานะ" aria-label="แก้ไขยา ${safeDrugCode}">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ลบ">
-                    <i class="fas fa-trash"></i>
+                <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ปิดใช้งาน" aria-label="ปิดใช้งานยา ${safeDrugCode}">
+                    <i class="fas fa-ban"></i>
                 </button>` : '<span class="text-muted">-</span>'}
             </td>
         </tr>
@@ -435,11 +435,11 @@ function filterDrugsModern() {
                     </td>
                     <td>
                         ${hasRole('admin', 'supervisor', 'pharmacist') ? `
-                        <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข">
+                        <button class="btn btn-sm btn-secondary" onclick="editDrug('${safeDrugCode}')" title="แก้ไข HAD / สถานะ" aria-label="แก้ไขยา ${safeDrugCode}">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ลบ">
-                            <i class="fas fa-trash"></i>
+                        <button class="btn btn-sm btn-danger" onclick="deleteDrug('${safeDrugCode}')" title="ปิดใช้งาน" aria-label="ปิดใช้งานยา ${safeDrugCode}">
+                            <i class="fas fa-ban"></i>
                         </button>` : '<span class="text-muted">-</span>'}
                     </td>
                 </tr>
@@ -501,22 +501,89 @@ function resetDrugFilters() {
     filterDrugsModern();
 }
 
+// ช่องที่มาจาก HOSxP — แก้ในแอปไม่ได้ (จะถูก sync ทับ) ในโหมดแก้ไขจึงปิดไว้
+const DRUG_SOURCE_FIELDS = ['drugName', 'drugGroup', 'drugUnit', 'drugStrength', 'drugDosageForm', 'drugTmtCode', 'drugUnitPrice'];
+
+function setDrugFormMode(mode) {
+    const form = document.getElementById('drugForm');
+    if (!form) return;
+    const editing = mode === 'edit';
+    form.dataset.mode = mode;
+
+    document.getElementById('drugCode').readOnly = editing;
+    DRUG_SOURCE_FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = editing;
+    });
+
+    document.querySelector('#addDrugForm h3').textContent = editing ? 'แก้ไข HAD / สถานะยา' : 'เพิ่มรายการยาใหม่';
+    document.querySelector('#drugForm button[type="submit"]').innerHTML = editing
+        ? '<i class="fas fa-save"></i> บันทึกการแก้ไข'
+        : '<i class="fas fa-plus"></i> เพิ่มยา';
+
+    let note = document.getElementById('drugEditNote');
+    if (editing && !note) {
+        note = document.createElement('p');
+        note.id = 'drugEditNote';
+        note.className = 'password-dialog-note';
+        note.textContent = 'แก้ได้เฉพาะสถานะ HAD และสถานะการใช้งาน — ข้อมูลอื่นมาจาก HOSxP ค่าที่แก้จะคงอยู่แม้ sync รายการยาใหม่';
+        form.prepend(note);
+    } else if (!editing && note) {
+        note.remove();
+    }
+}
+
 function showAddDrugForm() {
     if (!hasRole('admin', 'supervisor', 'pharmacist')) {
-        showNotification('คุณไม่มีสิทธิ์เพิ่มรายการยา (ต้องเป็นเภสัชกรขึ้นไป)', 'warning');
+        showNotification('คุณไม่มีสิทธิ์จัดการรายการยา (ต้องเป็นเภสัชกรขึ้นไป)', 'warning');
         return;
     }
+    if (document.getElementById('drugForm').dataset.mode !== 'edit') setDrugFormMode('add');
     document.getElementById('addDrugForm').style.display = 'block';
-    document.getElementById('drugCode').focus();
+    document.getElementById('addDrugForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const first = document.getElementById('drugForm').dataset.mode === 'edit' ? 'hadStatus' : 'drugCode';
+    document.getElementById(first).focus();
 }
 
 function hideAddDrugForm() {
     document.getElementById('addDrugForm').style.display = 'none';
     document.getElementById('drugForm').reset();
+    setDrugFormMode('add');
+}
+
+// อัปเดตยาในข้อมูลที่โหลดไว้ แล้ววาดตาราง/สถิติ/รายการ HAD ใหม่
+function applyLocalDrugChange(drugCode, changes) {
+    [drugListData, globalDrugList].forEach(list => {
+        const drug = (list || []).find(d => String(d.drugCode) === String(drugCode));
+        if (drug) Object.assign(drug, changes);
+    });
+    renderDrugTable();
+    updateDrugStats();
+    displayHADListFromDatabase(globalDrugList);
+}
+
+async function submitDrugUpdate(drugCode, changes) {
+    await apiPost('updateDrug', { drugCode, ...changes });
+    applyLocalDrugChange(drugCode, changes);
 }
 
 async function handleDrugFormSubmit(event) {
     event.preventDefault();
+
+    if (event.target.dataset.mode === 'edit') {
+        const drugCode = document.getElementById('drugCode').value;
+        const had = document.getElementById('hadStatus').value;
+        // ฟอร์มมี "ยกเลิก (Discontinued)" — ฝั่ง server เก็บเป็น Inactive
+        const status = document.getElementById('drugStatus').value === 'Active' ? 'Active' : 'Inactive';
+        try {
+            await submitDrugUpdate(drugCode, { had, status });
+            showNotification(`บันทึกการแก้ไขยา ${drugCode} แล้ว (HAD: ${had === 'High' ? 'High Alert' : 'ยาทั่วไป'})`, 'success');
+            hideAddDrugForm();
+        } catch (error) {
+            showNotification('แก้ไขยาไม่สำเร็จ: ' + error.message, 'error');
+        }
+        return;
+    }
 
     const formData = new FormData(event.target);
     const drugData = {
@@ -586,37 +653,27 @@ async function handleDrugFormSubmit(event) {
 }
 
 function editDrug(drugCode) {
-    const drug = drugListData.find(d => d.drugCode === drugCode);
-    if (drug) {
-        // Populate form with existing data
-        document.getElementById('drugCode').value = drug.drugCode;
-        document.getElementById('drugName').value = drug.drugName;
-        document.getElementById('drugGroup').value = drug.group;
-        document.getElementById('hadStatus').value = drug.had;
-        document.getElementById('drugStatus').value = drug.status;
+    const drug = drugListData.find(d => String(d.drugCode) === String(drugCode));
+    if (!drug) return;
 
-        // Make drug code readonly for editing
-        document.getElementById('drugCode').readOnly = true;
-
-        showAddDrugForm();
-
-        // Change form title and button text
-        document.querySelector('#addDrugForm h3').textContent = 'แก้ไขรายการยา';
-        document.querySelector('#drugForm button[type="submit"]').innerHTML = '<i class="fas fa-save"></i> อัปเดตยา';
-
-        showNotification('กรุณาแก้ไขข้อมูลและบันทึก', 'info');
-    }
+    setDrugFormMode('edit');
+    document.getElementById('drugCode').value = drug.drugCode;
+    document.getElementById('drugName').value = drug.drugName;
+    document.getElementById('hadStatus').value = drug.had === 'High' ? 'High' : 'Regular';
+    document.getElementById('drugStatus').value = drug.status === 'Active' ? 'Active' : 'Inactive';
+    showAddDrugForm();
 }
 
-function deleteDrug(drugCode) {
-    if (confirm('คุณต้องการลบรายการยา ' + drugCode + ' หรือไม่?')) {
-        // Remove from local data
-        drugListData = drugListData.filter(drug => drug.drugCode !== drugCode);
-        renderDrugTable();
-        updateDrugStats();
-        showNotification('ลบรายการยาเรียบร้อย', 'success');
-
-        // Note: Real deletion would require updating Google Sheets
-        // For now, we only remove from local display
+// ลบยาจริงไม่ได้ (รายการมาจาก HOSxP) — ปิดใช้งานแทน ซึ่งบันทึกที่ server และคงอยู่หลัง sync
+async function deleteDrug(drugCode) {
+    if (!hasRole('admin', 'supervisor', 'pharmacist')) return;
+    const drug = drugListData.find(d => String(d.drugCode) === String(drugCode));
+    const label = drug ? `${drug.drugName} (${drugCode})` : drugCode;
+    if (!confirm(`ปิดใช้งานยา ${label}?\nยาจะไม่แสดงในฟอร์มบันทึกรายงาน (เปิดใช้งานคืนได้จากปุ่มแก้ไข)`)) return;
+    try {
+        await submitDrugUpdate(drugCode, { status: 'Inactive' });
+        showNotification(`ปิดใช้งานยา ${drugCode} แล้ว`, 'success');
+    } catch (error) {
+        showNotification('ปิดใช้งานยาไม่สำเร็จ: ' + error.message, 'error');
     }
 }

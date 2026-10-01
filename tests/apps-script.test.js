@@ -226,3 +226,38 @@ test('getErrors: ระดับ user เห็นรายงานคนอื
     assert.equal(asPharm[1][11], 'ชื่อ U01 (U01) - เภสัชกร/user');
     assert.equal(asPharm[1][10], 'ข้อมูลลับ 1');
 });
+
+test('updateDrug: แก้ HAD/สถานะได้ (เภสัชกรขึ้นไป) และคงอยู่หลัง sync จาก HOSxP เขียนทับ Drug_List', () => {
+    const { env, addUser } = setup();
+    addUser('P01', 'pharmacist', 'PharmPass#11');
+    const drugs = env.sheets.Drug_List;
+    drugs.appendRow(['010', 'BCG vaccine', 'ITEM_IN1', 0, 1]);
+    drugs.appendRow(['MORPH10', 'Morphine 10 mg', 'ITEM_IN1', 0, 1]);
+
+    const user = login(env, 'U01', 'StrongPass#1').token;
+    const pharm = login(env, 'P01', 'PharmPass#11').token;
+
+    assert.equal(env.post({ action: 'updateDrug', token: user, drugCode: 'MORPH10', had: 'High' }).success, false, 'user แก้ไม่ได้');
+    assert.equal(env.post({ action: 'updateDrug', token: pharm, drugCode: 'MORPH10', had: 'Very' }).success, false, 'ค่าไม่ถูกต้อง');
+    assert.equal(env.post({ action: 'updateDrug', token: pharm, drugCode: 'NOPE', had: 'High' }).success, false, 'ไม่พบรหัส');
+
+    assert.equal(env.post({ action: 'updateDrug', token: pharm, drugCode: 'MORPH10', had: 'High' }).success, true);
+    const byCode = () => Object.fromEntries(env.get({ action: 'getDrugs' }).data.map(d => [String(d.code), d]));
+    assert.equal(byCode().MORPH10.had, 'High');
+
+    // sync-drugs เขียนทับ Drug_List ด้วยค่าจาก HOSxP (HAD = 0)
+    drugs.rows[2] = ['MORPH10', 'Morphine 10 mg', 'ITEM_IN1', 0, 1];
+    assert.equal(byCode().MORPH10.had, 'High', 'override ยังมีผล');
+
+    // ปิดใช้งาน (รหัสที่มี 0 นำหน้า) → หายจาก getDrugs แต่ยังอยู่ใน getDrugList
+    assert.equal(env.post({ action: 'updateDrug', token: pharm, drugCode: '010', status: 'Inactive' }).success, true);
+    assert.equal(byCode()['010'], undefined);
+    const full = env.post({ action: 'getDrugList' }).data.find(d => String(d.drugCode) === '010');
+    assert.equal(full.status, 'Inactive');
+
+    // แก้ครั้งที่สองไม่สร้างแถวซ้ำ และไม่ล้างค่า HAD เดิม
+    env.post({ action: 'updateDrug', token: pharm, drugCode: 'MORPH10', status: 'Active' });
+    const overrides = env.sheets.Drug_Overrides.rows.slice(1);
+    assert.equal(overrides.length, 2);
+    assert.equal(JSON.stringify(overrides.find(r => String(r[0]).includes('MORPH10')).slice(1, 4)), '["High","Active","P01"]');
+});

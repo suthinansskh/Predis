@@ -84,18 +84,49 @@ export function diffDrugs(before, after) {
     return { added, removed, changed };
 }
 
-async function writeToGoogleSheets(drugs) {
+function getSheetsClient() {
     const spreadsheetId = process.env.SPREADSHEET_ID;
     if (!spreadsheetId) {
         throw new Error('SPREADSHEET_ID not set in .env');
     }
-
     const credPath = path.resolve(__dirname, process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json');
     const auth = new google.auth.GoogleAuth({
         keyFile: credPath,
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
-    const sheets = google.sheets({ version: 'v4', auth });
+    return { sheets: google.sheets({ version: 'v4', auth }), spreadsheetId };
+}
+
+const codeKey = code => String(code ?? '').trim().replace(/^'/, '').toUpperCase();
+
+// HAD/สถานะที่เภสัชกรแก้ในแอป (Sheet Drug_Overrides) — ต้องไม่ถูก HOSxP เขียนทับ
+async function readDrugOverrides() {
+    const { sheets, spreadsheetId } = getSheetsClient();
+    try {
+        const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Drug_Overrides!A2:C' });
+        return new Map((res.data.values || []).filter(r => r[0]).map(r => [codeKey(r[0]), { had: r[1] || '', status: r[2] || '' }]));
+    } catch {
+        return new Map(); // ยังไม่มี Sheet นี้
+    }
+}
+
+export function applyOverrides(drugs, overrides) {
+    let applied = 0;
+    const result = drugs.map(d => {
+        const o = overrides.get(codeKey(d.drugCode));
+        if (!o) return d;
+        applied++;
+        return {
+            ...d,
+            had: o.had === 'High' || o.had === 'Regular' ? o.had : d.had,
+            status: o.status === 'Active' || o.status === 'Inactive' ? o.status : d.status
+        };
+    });
+    return { drugs: result, applied };
+}
+
+async function writeToGoogleSheets(drugs) {
+    const { sheets, spreadsheetId } = getSheetsClient();
     const sheetName = process.env.SHEET_DRUGS || 'Drug_List';
 
     console.log(`Writing ${drugs.length} drugs to Google Sheets "${sheetName}"...`);
@@ -133,7 +164,8 @@ async function writeToGoogleSheets(drugs) {
     await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `${sheetName}!A1`,
-        valueInputOption: 'USER_ENTERED',
+        // RAW: รหัสยาอย่าง "010" ต้องคงเป็นข้อความ (USER_ENTERED แปลงเป็นเลข 10)
+        valueInputOption: 'RAW',
         requestBody: { values: [header, ...dataRows] }
     });
 
@@ -141,7 +173,13 @@ async function writeToGoogleSheets(drugs) {
 }
 
 async function main() {
-    const drugs = await fetchFromMySQL();
+    let drugs = await fetchFromMySQL();
+
+    if (writeToSheets) {
+        const result = applyOverrides(drugs, await readDrugOverrides());
+        drugs = result.drugs;
+        console.log(`Applied ${result.applied} HAD/status overrides from Drug_Overrides`);
+    }
 
     const { added, removed, changed } = diffDrugs(await readCurrentDrugs(), drugs);
     console.log(`Changes: +${added.length} added, -${removed.length} removed, ~${changed.length} changed`);
