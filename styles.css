@@ -2343,6 +2343,53 @@ nav::-webkit-scrollbar { display: none; }
    ======================================== */
 
 /* Large tablets & small desktops */
+/* ===== Change Password Dialog ===== */
+.password-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 2000;
+}
+
+.password-dialog {
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 24px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.password-dialog h3 {
+    margin: 0 0 12px;
+    color: var(--color-text-primary);
+}
+
+.password-dialog-note {
+    background: var(--color-warning-light);
+    color: var(--color-text-primary);
+    border-left: 3px solid var(--color-warning);
+    padding: 8px 12px;
+    font-size: 13px;
+    margin: 0 0 16px;
+}
+
+.password-dialog input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.password-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
 @media (max-width: 1024px) {
     .analytics-grid { grid-template-columns: 1fr; }
     .analytics-card.full-width { grid-column: 1; }

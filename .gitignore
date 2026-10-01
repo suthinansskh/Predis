@@ -94,5 +94,9 @@ drug_list_raw.json
 # Credentials and environment files
 mcp-server/.env
 mcp-server/credentials.json
-server/.env
-server/credentials.json
+tools/.env
+tools/credentials.json
+
+# ข้อมูลบุคลากรจริง (PII) — ห้าม commit
+sample_users.csv
+*.users.csv

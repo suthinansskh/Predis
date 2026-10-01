@@ -139,7 +139,7 @@ Fuzzy Match:
 ## 🔧 Technical Implementation
 
 ### Files Modified
-- `script.js` - Lines 827-1097
+- `js/report-form.js` — `makeSearchable()` (เดิมอยู่ใน script.js)
 - `styles.css` - Lines 183-379
 - `index.html` - Lines 186-206
 

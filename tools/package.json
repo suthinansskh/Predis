@@ -1,0 +1,20 @@
+{
+  "name": "predis-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Predispensing Error Recorder — admin CLI tools (drug list sync MySQL → drug_list.json + Google Sheets)",
+  "type": "module",
+  "scripts": {
+    "sync-drugs": "node sync-drugs.js",
+    "sync-drugs:sheets": "node sync-drugs.js --sheets",
+    "sync-drugs:dry-run": "node sync-drugs.js --dry-run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "googleapis": "^144.0.0",
+    "mysql2": "^3.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

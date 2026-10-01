@@ -13,8 +13,6 @@ import {
     readSheetWithHeaders,
     readSheetRaw,
     appendRow,
-    writeRange,
-    clearRange,
     listSheets,
     SPREADSHEET_ID,
     SHEET_NAMES

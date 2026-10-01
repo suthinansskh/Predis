@@ -5,6 +5,7 @@
  * Usage:
  *   node sync-drugs.js              # MySQL → drug_list.json only
  *   node sync-drugs.js --sheets     # MySQL → drug_list.json + Google Sheets
+ *   node sync-drugs.js --dry-run    # แสดงความเปลี่ยนแปลงโดยไม่เขียนไฟล์
  *
  * Environment variables (via .env):
  *   MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
@@ -21,6 +22,7 @@ import { google } from 'googleapis';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DRUG_LIST_PATH = path.join(__dirname, '..', 'drug_list.json');
 const writeToSheets = process.argv.includes('--sheets');
+const dryRun = process.argv.includes('--dry-run');
 
 async function fetchFromMySQL() {
     const { MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE } = process.env;
@@ -43,18 +45,43 @@ async function fetchFromMySQL() {
 
     console.log(`Fetched ${rows.length} drugs from MySQL`);
 
-    return rows.map(row => ({
-        drugCode: (row.itemcode || '').trim(),
-        drugName: (row.Name || '').trim(),
+    return rows.map(toDrug).sort((a, b) => a.drugCode.localeCompare(b.drugCode));
+}
+
+// Collapse embedded newlines / repeated spaces from HOSxP free-text fields
+const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+export function toDrug(row) {
+    return ({
+        drugCode: clean(row.itemcode),
+        drugName: clean(row.Name),
         group: row.ItemType || '',
         had: row.high_alert_drug === 1 ? 'High' : 'Regular',
         status: String(row.no_use) === '0' ? 'Active' : 'Inactive',
-        unit: (row.UnitName || '').trim(),
-        strength: (row.strength || '').trim(),
-        dosageForm: (row.dosage_form || '').trim(),
+        unit: clean(row.UnitName),
+        strength: clean(row.strength),
+        dosageForm: clean(row.dosage_form),
         tmtCode: (row.tmt_code || '').trim(),
         unitPrice: row.UnitPrice || 0
-    }));
+    });
+}
+
+async function readCurrentDrugs() {
+    try {
+        return JSON.parse(await fs.readFile(DRUG_LIST_PATH, 'utf8'));
+    } catch {
+        return [];
+    }
+}
+
+export function diffDrugs(before, after) {
+    const oldByCode = new Map(before.map(d => [d.drugCode, d]));
+    const newByCode = new Map(after.map(d => [d.drugCode, d]));
+    const added = after.filter(d => !oldByCode.has(d.drugCode));
+    const removed = before.filter(d => !newByCode.has(d.drugCode));
+    const changed = after.filter(d => oldByCode.has(d.drugCode) &&
+        JSON.stringify(oldByCode.get(d.drugCode)) !== JSON.stringify(d));
+    return { added, removed, changed };
 }
 
 async function writeToGoogleSheets(drugs) {
@@ -116,8 +143,20 @@ async function writeToGoogleSheets(drugs) {
 async function main() {
     const drugs = await fetchFromMySQL();
 
-    // Always save to local JSON
-    await fs.writeFile(DRUG_LIST_PATH, JSON.stringify(drugs, null, 2));
+    const { added, removed, changed } = diffDrugs(await readCurrentDrugs(), drugs);
+    console.log(`Changes: +${added.length} added, -${removed.length} removed, ~${changed.length} changed`);
+    added.forEach(d => console.log(`  + ${d.drugCode} ${d.drugName}`));
+    removed.forEach(d => console.log(`  - ${d.drugCode} ${d.drugName}`));
+    changed.forEach(d => console.log(`  ~ ${d.drugCode} ${d.drugName}`));
+
+    if (dryRun) {
+        console.log('Dry run: no files written');
+        return;
+    }
+
+    // Compact JSON (one drug per line) keeps the file small but diff-friendly
+    const json = '[\n' + drugs.map(d => JSON.stringify(d)).join(',\n') + '\n]\n';
+    await fs.writeFile(DRUG_LIST_PATH, json);
     console.log(`Saved ${drugs.length} drugs to ${DRUG_LIST_PATH}`);
 
     // Optionally push to Google Sheets
@@ -128,7 +167,10 @@ async function main() {
     console.log('Done!');
 }
 
-main().catch(err => {
-    console.error('Sync failed:', err.message);
-    process.exit(1);
-});
+// Run only when executed directly (allows importing toDrug in tests)
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    main().catch(err => {
+        console.error('Sync failed:', err.message);
+        process.exit(1);
+    });
+}

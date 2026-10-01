@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous" referrerpolicy="no-referrer">
 </head>
 <body data-page="index">
     <!-- Login Section -->
@@ -69,6 +69,9 @@
                     <span id="currentUser" class="current-user">
                         <i class="fas fa-user"></i> <span id="userName">Loading...</span>
                     </span>
+                    <button id="changePasswordBtn" class="logout-btn" onclick="showChangePasswordDialog()" title="เปลี่ยนรหัสผ่าน" aria-label="เปลี่ยนรหัสผ่าน">
+                        <i class="fas fa-key"></i>
+                    </button>
                     <button id="logoutBtn" class="logout-btn" onclick="logout()">
                         <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
                     </button>
@@ -102,9 +105,6 @@
                     <div class="drug-header-actions">
                         <button id="syncExternalDrugListBtn" class="btn btn-secondary">
                             <i class="fas fa-sync-alt"></i> อัปเดตรายการยาจากฐานข้อมูลภายนอก
-                        </button>
-                        <button id="syncDrugToSheetsBtn" class="btn btn-secondary" title="ดึงข้อมูลยาจาก MySQL แล้วอัปเดตลง Google Sheets">
-                            <i class="fas fa-cloud-upload-alt"></i> Sync MySQL → Sheets
                         </button>
                         <button id="addDrugBtn" class="btn btn-primary" onclick="showAddDrugForm()">
                             <i class="fas fa-plus"></i> เพิ่มยา
@@ -521,7 +521,17 @@
 
     <div id="notification" class="notification"></div>
 
-    <script src="script.js"></script>
+    <script src="js/core.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app-shell.js"></script>
+    <script src="js/report-form.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/form-validation.js"></script>
+    <script src="js/drug-sync.js"></script>
+    <script src="js/drug-list.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/init.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(() => {});

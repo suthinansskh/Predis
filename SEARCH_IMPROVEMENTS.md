@@ -8,7 +8,7 @@ Successfully upgraded the search functionality across the Predis application wit
 ## 1. Enhanced Dropdown Search (Error Form)
 
 ### Location
-- Files: `index.html` (lines 186-206), `script.js` (lines 827-991), `styles.css` (lines 183-304)
+- Files: `index.html` (lines 186-206), `js/report-form.js` (`makeSearchable`), `styles.css` (lines 183-304)
 - Fields: "รายการที่ถูกต้อง" and "รายการยาที่ผิด"
 
 ### Features Implemented
@@ -50,7 +50,7 @@ Successfully upgraded the search functionality across the Predis application wit
 ## 2. Modern Drug List Search
 
 ### Location
-- Files: `index.html` (lines 854-919), `script.js` (lines 2909-3104), `styles.css` (lines 2695-2947)
+- Files: `index.html` (lines 854-919), `js/drug-list.js` (`filterDrugsModern`), `styles.css` (lines 2695-2947)
 - Section: "รายการยา" tab
 
 ### Features Implemented
@@ -171,13 +171,13 @@ Score Priority:
 ```
 /media/atom/6ADAE717DAE6DDF7/Predis/
 ├── index.html     (Updated drug list search UI)
-├── script.js      (Added fuzzy matching algorithms)
+├── js/drug-list.js (Added fuzzy matching algorithms)
 └── styles.css     (Added modern search styles)
 ```
 
 ### Lines Changed
 - **index.html**: 66 lines (search interface)
-- **script.js**: ~350 lines (search logic)
+- **js/report-form.js, js/drug-list.js**: ~350 lines (search logic)
 - **styles.css**: ~250 lines (modern styling)
 
 ---
