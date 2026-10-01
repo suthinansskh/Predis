@@ -2390,6 +2390,139 @@ nav::-webkit-scrollbar { display: none; }
     margin-top: 16px;
 }
 
+/* ===== Login links (ลงทะเบียน / ลืมรหัสผ่าน) ===== */
+.login-links {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: var(--space-4);
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    padding: 4px 0;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.link-btn:hover,
+.link-btn:focus-visible {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+}
+
+.password-dialog select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.password-dialog {
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+}
+
+/* ===== User management ===== */
+.user-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: var(--space-4) 0;
+}
+
+.user-tab {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-md);
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.user-tab.active {
+    background: var(--color-accent-light);
+    border-color: var(--color-accent);
+    color: var(--color-accent-dark);
+}
+
+.user-resets {
+    background: var(--color-warning-light);
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    margin-top: var(--space-4);
+}
+
+.user-resets h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    color: var(--color-text-primary);
+}
+
+.user-resets ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.user-resets li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.user-resets small,
+#userManagementBody td small {
+    color: var(--color-text-tertiary);
+}
+
+#userManagementBody .data-table td:last-child {
+    text-align: left;
+}
+
+.user-level-select {
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+
+.user-actions {
+    white-space: nowrap;
+}
+
+.user-actions .btn + .btn {
+    margin-left: 4px;
+}
+
+.temp-password {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+}
+
+.temp-password code {
+    flex: 1;
+    font-size: 20px;
+    letter-spacing: 2px;
+    color: var(--color-text-primary);
+    user-select: all;
+}
+
 @media (max-width: 1024px) {
     .analytics-grid { grid-template-columns: 1fr; }
     .analytics-card.full-width { grid-column: 1; }

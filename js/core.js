@@ -32,7 +32,8 @@ function navigateTo(event, sectionName) {
         'dashboard': 'dashboard.html',
         'myreport': 'myreport.html',
         'druglist': 'index.html#druglist',
-        'settings': 'index.html#settings'
+        'settings': 'index.html#settings',
+        'users': 'index.html#users'
     };
     const targetUrl = pageMap[sectionName];
     if (targetUrl) {

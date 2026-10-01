@@ -28,8 +28,24 @@ const BLOCK_WEAK_PASSWORD_LOGIN = true;
 
 const ROLE_ACTIONS = {
   addDrug: ['admin', 'supervisor', 'pharmacist'],
-  replaceDrugList: ['admin']
+  replaceDrugList: ['admin'],
+  listUsers: ['admin'],
+  approveUser: ['admin'],
+  rejectUser: ['admin'],
+  updateUser: ['admin'],
+  adminResetPassword: ['admin']
 };
+
+const USER_LEVELS = ['user', 'pharmacist', 'supervisor', 'admin'];
+const USER_GROUPS = ['เภสัชกร', 'เจ้าพนักงานเภสัชกรรม', 'อื่นๆ'];
+const RESET_SHEET = 'Password_Resets';
+
+// คอลัมน์ใน Sheet Users (1-based) — I/J เพิ่มสำหรับการลงทะเบียน
+const COL = { PS: 1, ID13: 2, NAME: 3, GROUP: 4, LEVEL: 5, EMAIL: 6, PASSWORD: 7, STATUS: 8, REQUEST: 9, REQUESTED_AT: 10 };
+const USER_HEADER = ['PS Code', 'ID 13 หลัก', 'ชื่อ-นามสกุล', 'กลุ่ม', 'ระดับ', 'อีเมล', 'รหัสผ่าน', 'status', 'สถานะคำขอ', 'วันที่ขอ'];
+
+const REGISTER_MAX_PER_HOUR = 30;
+const RESET_REQUEST_COOLDOWN_SECONDS = 60 * 60;
 
 // ช่วงเปลี่ยนผ่าน: client เวอร์ชันเก่า (cache ใน Service Worker) ยังไม่ส่ง token
 // และจะแสดง "บันทึกสำเร็จ" แม้ server ปฏิเสธ → ยอมรับ append แบบไม่มี token ชั่วคราว
@@ -167,9 +183,18 @@ function sessionKey(token) {
   return 'sess:' + token;
 }
 
+function revokedKey(psCode) {
+  return 'revokedAt:' + String(psCode).trim().toLowerCase();
+}
+
+// ยกเลิกทุก session ของผู้ใช้ (ใช้เมื่อปิดบัญชี/เปลี่ยนระดับ/admin รีเซ็ตรหัส)
+function revokeUserSessions(psCode) {
+  PropertiesService.getScriptProperties().setProperty(revokedKey(psCode), String(Date.now()));
+}
+
 function createSession(user) {
   var token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
-  var session = { psCode: user.psCode, name: user.name, group: user.group, level: user.level };
+  var session = { psCode: user.psCode, name: user.name, group: user.group, level: user.level, issuedAt: Date.now() };
   CacheService.getScriptCache().put(sessionKey(token), JSON.stringify(session), SESSION_TTL_SECONDS);
   return token;
 }
@@ -180,8 +205,14 @@ function getSession(token) {
   var cache = CacheService.getScriptCache();
   var raw = cache.get(sessionKey(token));
   if (!raw) return null;
+  var session = JSON.parse(raw);
+  var revokedAt = parseInt(PropertiesService.getScriptProperties().getProperty(revokedKey(session.psCode)) || '0', 10);
+  if (revokedAt && (session.issuedAt || 0) < revokedAt) {
+    cache.remove(sessionKey(token));
+    return null;
+  }
   cache.put(sessionKey(token), raw, SESSION_TTL_SECONDS);
-  return JSON.parse(raw);
+  return session;
 }
 
 function destroySession(token) {
@@ -257,6 +288,12 @@ function doPost(e) {
     if (action === 'getDrugList') {
       return getDrugList(SpreadsheetApp.openById(SPREADSHEET_ID));
     }
+    if (action === 'register') {
+      return registerUser(data);
+    }
+    if (action === 'requestPasswordReset') {
+      return requestPasswordReset(data.userCode);
+    }
 
     // ===== Authenticated actions =====
     var session = getSession(data.token);
@@ -287,6 +324,16 @@ function doPost(e) {
       case 'addDrug':
       case 'replaceDrugList':
         return handleDrugOperation(SpreadsheetApp.openById(SPREADSHEET_ID), data, session);
+      case 'listUsers':
+        return listUsers();
+      case 'approveUser':
+        return approveUser(session, data.psCode, data.level);
+      case 'rejectUser':
+        return rejectUser(session, data.psCode);
+      case 'updateUser':
+        return updateUser(session, data.psCode, data.level, data.active);
+      case 'adminResetPassword':
+        return adminResetPassword(session, data.psCode);
     }
 
     return jsonResponse({ success: false, error: 'Invalid action or missing data' });
@@ -450,13 +497,18 @@ function loginUser(userCode, password) {
     var passwordMatch = false;
     var mustChangePassword = false;
 
+    // หาแถวที่ตรงกับรหัส — ถ้ามีหลายแถว ให้แถวที่ active มาก่อน
+    var rowIndex = -1;
     for (var i = 1; i < values.length; i++) {
-      var row = values[i];
-      var psCode = (row[0] || '').toString().trim().toLowerCase();
-      var id13 = (row[1] || '').toString().trim().toLowerCase();
-      var status = row[7] === true || row[7] === 'TRUE' || row[7] === 'true';
-      if (!((psCode === normalizedCode || id13 === normalizedCode) && status)) continue;
+      var psCode = (values[i][0] || '').toString().trim().toLowerCase();
+      var id13 = (values[i][1] || '').toString().trim().toLowerCase();
+      if (psCode !== normalizedCode && id13 !== normalizedCode) continue;
+      if (rowIndex === -1 || isActiveStatus(values[i][7])) rowIndex = i;
+      if (isActiveStatus(values[i][7])) break;
+    }
 
+    if (rowIndex !== -1) {
+      var row = values[rowIndex];
       var rawId13 = (row[1] || '').toString().trim();
       var storedPassword = (row[6] || '').toString().trim();
 
@@ -468,11 +520,22 @@ function loginUser(userCode, password) {
       }
       // ไม่มีรหัสผ่าน = login ไม่ได้ (เดิมใช้ 4 ตัวท้าย ID13 แต่ ID13 หลุดสู่สาธารณะแล้ว)
 
+      // แจ้งสถานะบัญชีหลังตรวจรหัสผ่านแล้วเท่านั้น (ไม่เปิดเผยว่ามีบัญชีนี้อยู่)
+      if (passwordMatch && !isActiveStatus(row[7])) {
+        var request = (row[COL.REQUEST - 1] || '').toString();
+        return jsonResponse({
+          success: false,
+          error: request === 'PENDING' ? 'บัญชีของคุณอยู่ระหว่างรอผู้ดูแลระบบอนุมัติ'
+            : request === 'REJECTED' ? 'คำขอลงทะเบียนไม่ได้รับการอนุมัติ กรุณาติดต่อผู้ดูแลระบบ'
+            : 'บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ'
+        });
+      }
+
       if (passwordMatch && BLOCK_WEAK_PASSWORD_LOGIN && isWeakPassword(inputPassword, rawId13)) {
         logAuditEvent('LOGIN_BLOCKED_WEAK', row[0], 'Default/weak password');
         return jsonResponse({
           success: false,
-          error: 'รหัสผ่านเริ่มต้นถูกปิดใช้งานเพื่อความปลอดภัย กรุณาติดต่อผู้ดูแลระบบเพื่อรับรหัสผ่านชั่วคราว'
+          error: 'รหัสผ่านเริ่มต้นถูกปิดใช้งานเพื่อความปลอดภัย กรุณากด "ลืมรหัสผ่าน" เพื่อขอรหัสผ่านชั่วคราวจากผู้ดูแลระบบ'
         });
       }
 
@@ -481,7 +544,7 @@ function loginUser(userCode, password) {
           PropertiesService.getScriptProperties().getProperty(mustChangeKey(row[0])) === '1';
         if (needsRehash(storedPassword)) {
           try {
-            userSheet.getRange(i + 1, 7).setValue(hashPassword(inputPassword));
+            userSheet.getRange(rowIndex + 1, COL.PASSWORD).setValue(hashPassword(inputPassword));
           } catch (migrateErr) {
             // Non-fatal: password still works, just not migrated yet
           }
@@ -495,7 +558,6 @@ function loginUser(userCode, password) {
           status: true
         };
       }
-      break;
     }
 
     if (!foundUser) {
@@ -687,6 +749,281 @@ function getDrugList(spreadsheet) {
   } catch (error) {
     return jsonResponse({ success: false, error: 'Error getting drug list: ' + error.toString() });
   }
+}
+
+// ===== Users: helpers =====
+
+function isActiveStatus(value) {
+  return value === true || value === 'TRUE' || value === 'true';
+}
+
+function getUserSheet() {
+  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = spreadsheet.getSheetByName(USER_SHEET);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(USER_SHEET);
+  }
+  // เพิ่ม header คอลัมน์ I/J ถ้ายังไม่มี (Sheet เดิมมีถึง H)
+  var header = sheet.getLastRow() > 0 ? sheet.getRange(1, 1, 1, USER_HEADER.length).getValues()[0] : [];
+  if (header[COL.REQUEST - 1] !== USER_HEADER[COL.REQUEST - 1]) {
+    sheet.getRange(1, 1, 1, USER_HEADER.length).setValues([USER_HEADER.map(function(h, i) { return header[i] || h; })]);
+  }
+  return sheet;
+}
+
+// คืน { sheet, rowNumber, row } ของผู้ใช้จาก PS Code (rowNumber เป็น 1-based) หรือ null
+function findUserRow(psCode) {
+  var sheet = getUserSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1 || !psCode) return null;
+  var target = String(psCode).trim().toLowerCase();
+  var rows = sheet.getRange(2, 1, lastRow - 1, USER_HEADER.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if ((rows[i][0] || '').toString().trim().toLowerCase() === target) {
+      return { sheet: sheet, rowNumber: i + 2, row: rows[i] };
+    }
+  }
+  return null;
+}
+
+function rateLimited(key, max, seconds) {
+  var cache = CacheService.getScriptCache();
+  var count = parseInt(cache.get(key) || '0', 10);
+  if (count >= max) return true;
+  cache.put(key, String(count + 1), seconds);
+  return false;
+}
+
+function nowText() {
+  return Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm:ss');
+}
+
+// ===== Registration (public) =====
+
+function registerUser(data) {
+  try {
+    if (rateLimited('reg:global', REGISTER_MAX_PER_HOUR, 60 * 60)) {
+      return jsonResponse({ success: false, error: 'มีการลงทะเบียนจำนวนมาก กรุณาลองใหม่ภายหลัง' });
+    }
+
+    var psCode = String(data.psCode || '').trim();
+    var name = String(data.name || '').trim();
+    var group = String(data.group || '').trim();
+    var email = String(data.email || '').trim();
+    var password = String(data.password || '');
+
+    if (!/^[A-Za-z0-9_-]{2,20}$/.test(psCode)) {
+      return jsonResponse({ success: false, error: 'PS Code ต้องเป็นตัวอักษรอังกฤษ/ตัวเลข 2-20 ตัว' });
+    }
+    if (name.length < 4 || name.length > 100) {
+      return jsonResponse({ success: false, error: 'กรุณาระบุชื่อ-นามสกุล' });
+    }
+    if (USER_GROUPS.indexOf(group) === -1) {
+      return jsonResponse({ success: false, error: 'กรุณาเลือกกลุ่มงาน' });
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return jsonResponse({ success: false, error: 'รูปแบบอีเมลไม่ถูกต้อง' });
+    }
+    if (isWeakPassword(password, '')) {
+      return jsonResponse({
+        success: false,
+        error: 'รหัสผ่านต้องมีอย่างน้อย ' + PASSWORD_MIN_LENGTH + ' ตัวอักษร และห้ามเป็นรหัสที่เดาง่าย'
+      });
+    }
+
+    var lock = LockService.getScriptLock();
+    try {
+      lock.waitLock(10000);
+      if (findUserRow(psCode)) {
+        return jsonResponse({ success: false, error: 'PS Code นี้มีในระบบแล้ว หากลืมรหัสผ่านให้กด "ลืมรหัสผ่าน"' });
+      }
+      getUserSheet().appendRow([
+        sanitizeInput(psCode), '', sanitizeInput(name), sanitizeInput(group), 'user',
+        sanitizeInput(email), hashPassword(password), false, 'PENDING', nowText()
+      ]);
+    } finally {
+      lock.releaseLock();
+    }
+
+    logAuditEvent('REGISTER_REQUESTED', psCode, name);
+    return jsonResponse({ success: true, message: 'ส่งคำขอลงทะเบียนแล้ว กรุณารอผู้ดูแลระบบอนุมัติ' });
+
+  } catch (error) {
+    return jsonResponse({ success: false, error: 'Error registering: ' + error.toString() });
+  }
+}
+
+// ===== Password reset request (public) =====
+
+function getResetSheet() {
+  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = spreadsheet.getSheetByName(RESET_SHEET);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(RESET_SHEET);
+    sheet.getRange(1, 1, 1, 6).setValues([['วันที่ขอ', 'PS Code', 'ชื่อ', 'สถานะ', 'ดำเนินการโดย', 'วันที่ดำเนินการ']]);
+  }
+  return sheet;
+}
+
+/**
+ * บันทึกคำขอรีเซ็ตรหัสผ่านให้ admin ดำเนินการ
+ * ตอบข้อความเดียวกันเสมอ — ไม่เปิดเผยว่ามีผู้ใช้นี้หรือไม่
+ */
+function requestPasswordReset(userCode) {
+  var generic = jsonResponse({
+    success: true,
+    message: 'หากรหัสผู้ใช้ถูกต้อง คำขอของคุณถูกส่งถึงผู้ดูแลระบบแล้ว กรุณาติดต่อรับรหัสผ่านชั่วคราว'
+  });
+
+  try {
+    var code = String(userCode || '').trim().toLowerCase();
+    if (!code || code.length > 30) return generic;
+    if (rateLimited('rr:' + code, 1, RESET_REQUEST_COOLDOWN_SECONDS)) return generic;
+    if (rateLimited('rr:global', 50, 60 * 60)) return generic;
+
+    // รับได้ทั้ง PS Code และ ID13
+    var sheet = getUserSheet();
+    var lastRow = sheet.getLastRow();
+    var rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, COL.STATUS).getValues() : [];
+    var user = null;
+    for (var i = 0; i < rows.length; i++) {
+      var ps = (rows[i][0] || '').toString().trim();
+      var id13 = (rows[i][1] || '').toString().trim().toLowerCase();
+      if ((ps.toLowerCase() === code || id13 === code) && isActiveStatus(rows[i][7])) {
+        user = { psCode: ps, name: rows[i][2] };
+        break;
+      }
+    }
+    if (!user) return generic;
+
+    var resetSheet = getResetSheet();
+    var resetRows = resetSheet.getDataRange().getValues().slice(1);
+    var alreadyPending = resetRows.some(function(r) { return r[1] === user.psCode && r[3] === 'PENDING'; });
+    if (!alreadyPending) {
+      resetSheet.appendRow([nowText(), sanitizeInput(user.psCode), sanitizeInput(user.name), 'PENDING', '', '']);
+      logAuditEvent('RESET_REQUESTED', user.psCode, '');
+    }
+  } catch (error) {
+    console.error('requestPasswordReset failed:', error);
+  }
+  return generic;
+}
+
+// ===== User management (admin) =====
+
+function maskId13(id13) {
+  var s = String(id13 || '');
+  return s.length > 4 ? new Array(s.length - 3).join('*') + s.slice(-4) : s;
+}
+
+function listUsers() {
+  var sheet = getUserSheet();
+  var lastRow = sheet.getLastRow();
+  var rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, USER_HEADER.length).getValues() : [];
+  var props = PropertiesService.getScriptProperties();
+
+  var users = rows.filter(function(r) { return (r[0] || '').toString().trim(); }).map(function(r) {
+    var psCode = r[0].toString().trim();
+    return {
+      psCode: psCode,
+      id13: maskId13(r[1]),
+      name: String(r[2] || ''),
+      group: String(r[3] || ''),
+      level: String(r[4] || ''),
+      email: String(r[5] || ''),
+      active: isActiveStatus(r[7]),
+      request: String(r[COL.REQUEST - 1] || ''),
+      requestedAt: String(r[COL.REQUESTED_AT - 1] || ''),
+      hasPassword: Boolean(r[6]),
+      mustChangePassword: props.getProperty(mustChangeKey(psCode)) === '1'
+    };
+  });
+
+  var resets = getResetSheet().getDataRange().getValues().slice(1)
+    .filter(function(r) { return r[3] === 'PENDING'; })
+    .map(function(r) { return { requestedAt: String(r[0]), psCode: String(r[1]), name: String(r[2]) }; });
+
+  return jsonResponse({ success: true, users: users, pendingResets: resets, levels: USER_LEVELS });
+}
+
+function approveUser(session, psCode, level) {
+  var found = findUserRow(psCode);
+  if (!found || found.row[COL.REQUEST - 1] !== 'PENDING') {
+    return jsonResponse({ success: false, error: 'ไม่พบคำขอลงทะเบียนที่รออนุมัติ' });
+  }
+  var newLevel = USER_LEVELS.indexOf(level) !== -1 ? level : 'user';
+  found.sheet.getRange(found.rowNumber, COL.LEVEL).setValue(newLevel);
+  found.sheet.getRange(found.rowNumber, COL.STATUS).setValue(true);
+  found.sheet.getRange(found.rowNumber, COL.REQUEST).setValue('APPROVED');
+  logAuditEvent('USER_APPROVED', session.psCode, psCode + ' as ' + newLevel);
+  return jsonResponse({ success: true, message: 'อนุมัติ ' + psCode + ' แล้ว' });
+}
+
+function rejectUser(session, psCode) {
+  var found = findUserRow(psCode);
+  if (!found || found.row[COL.REQUEST - 1] !== 'PENDING') {
+    return jsonResponse({ success: false, error: 'ไม่พบคำขอลงทะเบียนที่รออนุมัติ' });
+  }
+  found.sheet.getRange(found.rowNumber, COL.STATUS).setValue(false);
+  found.sheet.getRange(found.rowNumber, COL.REQUEST).setValue('REJECTED');
+  logAuditEvent('USER_REJECTED', session.psCode, psCode);
+  return jsonResponse({ success: true, message: 'ปฏิเสธคำขอของ ' + psCode + ' แล้ว' });
+}
+
+function updateUser(session, psCode, level, active) {
+  var found = findUserRow(psCode);
+  if (!found) {
+    return jsonResponse({ success: false, error: 'ไม่พบผู้ใช้' });
+  }
+  if (String(psCode).trim().toLowerCase() === String(session.psCode).trim().toLowerCase()) {
+    return jsonResponse({ success: false, error: 'ไม่สามารถเปลี่ยนระดับหรือปิดบัญชีของตัวเองได้' });
+  }
+
+  var changes = [];
+  if (level !== undefined && level !== '') {
+    if (USER_LEVELS.indexOf(level) === -1) {
+      return jsonResponse({ success: false, error: 'ระดับผู้ใช้ไม่ถูกต้อง' });
+    }
+    found.sheet.getRange(found.rowNumber, COL.LEVEL).setValue(level);
+    changes.push('level=' + level);
+  }
+  if (active !== undefined && active !== '') {
+    var isActive = active === true || active === 'true';
+    found.sheet.getRange(found.rowNumber, COL.STATUS).setValue(isActive);
+    changes.push('active=' + isActive);
+  }
+  if (changes.length === 0) {
+    return jsonResponse({ success: false, error: 'ไม่มีข้อมูลที่จะเปลี่ยน' });
+  }
+
+  revokeUserSessions(psCode);
+  logAuditEvent('USER_UPDATED', session.psCode, psCode + ' ' + changes.join(', '));
+  return jsonResponse({ success: true, message: 'บันทึกการเปลี่ยนแปลงของ ' + psCode + ' แล้ว' });
+}
+
+// ออกรหัสผ่านชั่วคราว — ส่งกลับครั้งเดียวให้ admin แจ้งผู้ใช้ด้วยตนเอง
+function adminResetPassword(session, psCode) {
+  var found = findUserRow(psCode);
+  if (!found) {
+    return jsonResponse({ success: false, error: 'ไม่พบผู้ใช้' });
+  }
+
+  var temp = generateTempPassword();
+  found.sheet.getRange(found.rowNumber, COL.PASSWORD).setValue(hashPassword(temp));
+  PropertiesService.getScriptProperties().setProperty(mustChangeKey(found.row[0]), '1');
+  revokeUserSessions(found.row[0]);
+  CacheService.getScriptCache().remove(loginFailureKey(String(found.row[0]).trim().toLowerCase()));
+
+  var resetSheet = getResetSheet();
+  var resetRows = resetSheet.getDataRange().getValues();
+  for (var i = 1; i < resetRows.length; i++) {
+    if (resetRows[i][1] === found.row[0] && resetRows[i][3] === 'PENDING') {
+      resetSheet.getRange(i + 1, 4, 1, 3).setValues([['DONE', session.psCode, nowText()]]);
+    }
+  }
+
+  logAuditEvent('ADMIN_RESET_PASSWORD', session.psCode, String(found.row[0]));
+  return jsonResponse({ success: true, psCode: String(found.row[0]), name: String(found.row[2]), tempPassword: temp });
 }
 
 // ===== Change Password =====

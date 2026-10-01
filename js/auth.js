@@ -35,12 +35,10 @@ function showMainApp() {
         userNameEl.textContent = currentUser.name || currentUser.psCode;
     }
 
-    // RBAC: hide settings tab for non-admin users
-    const navBtns = document.querySelectorAll('.nav-btn');
-    navBtns.forEach(btn => {
-        if (btn.textContent.includes('ตั้งค่า')) {
-            btn.style.display = hasRole('admin') ? '' : 'none';
-        }
+    // RBAC: hide admin-only tabs (UX only — server enforces roles)
+    ['settingsNavBtn', 'usersNavBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.style.display = hasRole('admin') ? '' : 'none';
     });
 
     // RBAC: hide add drug button for non-privileged users
@@ -175,35 +173,36 @@ function logout() {
     }
 }
 
-// ===== Change Password Dialog =====
-function showChangePasswordDialog({ forced = false } = {}) {
-    if (document.getElementById('changePasswordDialog')) return;
+// ===== Form Dialog (ใช้ร่วมกัน: เปลี่ยนรหัส / ลงทะเบียน / ลืมรหัส) =====
+
+/**
+ * เปิด dialog ที่มีฟอร์ม
+ * @param {Object} opts
+ * @param {string} opts.id - id ของ overlay (เปิดซ้ำไม่ได้)
+ * @param {string} opts.title - หัวข้อ (HTML ที่ปลอดภัย)
+ * @param {string} [opts.note] - ข้อความแจ้งเตือนด้านบน (HTML ที่ปลอดภัย)
+ * @param {string} opts.body - ช่องกรอกในฟอร์ม (HTML ที่ปลอดภัย)
+ * @param {string} [opts.submitLabel]
+ * @param {boolean} [opts.cancellable=true]
+ * @param {(form: HTMLFormElement) => Promise<boolean|void>} opts.onSubmit - คืน false เพื่อคง dialog ไว้
+ */
+function openFormDialog({ id, title, note = '', body, submitLabel = 'บันทึก', cancellable = true, onSubmit }) {
+    if (document.getElementById(id)) return null;
 
     const overlay = document.createElement('div');
-    overlay.id = 'changePasswordDialog';
+    overlay.id = id;
     overlay.className = 'password-dialog-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-labelledby', 'changePasswordTitle');
+    overlay.setAttribute('aria-labelledby', `${id}Title`);
     overlay.innerHTML = `
         <form class="password-dialog" novalidate>
-            <h3 id="changePasswordTitle"><i class="fas fa-key"></i> เปลี่ยนรหัสผ่าน</h3>
-            ${forced ? '<p class="password-dialog-note">รหัสผ่านปัจจุบันเป็นรหัสชั่วคราว กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน</p>' : ''}
-            <div class="form-group">
-                <label for="cpCurrent">รหัสผ่านปัจจุบัน</label>
-                <input type="password" id="cpCurrent" autocomplete="current-password" required>
-            </div>
-            <div class="form-group">
-                <label for="cpNew">รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)</label>
-                <input type="password" id="cpNew" autocomplete="new-password" minlength="8" required>
-            </div>
-            <div class="form-group">
-                <label for="cpConfirm">ยืนยันรหัสผ่านใหม่</label>
-                <input type="password" id="cpConfirm" autocomplete="new-password" minlength="8" required>
-            </div>
+            <h3 id="${id}Title">${title}</h3>
+            ${note ? `<p class="password-dialog-note">${note}</p>` : ''}
+            ${body}
             <div class="password-dialog-actions">
-                ${forced ? '' : '<button type="button" class="btn btn-secondary" data-action="cancel">ยกเลิก</button>'}
-                <button type="submit" class="btn btn-primary">บันทึก</button>
+                ${cancellable ? '<button type="button" class="btn btn-secondary" data-action="cancel">ยกเลิก</button>' : ''}
+                <button type="submit" class="btn btn-primary">${submitLabel}</button>
             </div>
         </form>`;
     document.body.appendChild(overlay);
@@ -212,33 +211,74 @@ function showChangePasswordDialog({ forced = false } = {}) {
     const close = () => overlay.remove();
     const cancelBtn = overlay.querySelector('[data-action="cancel"]');
     if (cancelBtn) cancelBtn.addEventListener('click', close);
-    overlay.querySelector('#cpCurrent').focus();
+    if (cancellable) {
+        overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    }
+    const firstInput = form.querySelector('input, select');
+    if (firstInput) firstInput.focus();
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const currentPassword = form.querySelector('#cpCurrent').value;
-        const newPassword = form.querySelector('#cpNew').value;
-        const confirmPassword = form.querySelector('#cpConfirm').value;
-
-        if (newPassword.length < 8) {
-            showNotification('รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร', 'error');
-            return;
-        }
-        if (newPassword !== confirmPassword) {
-            showNotification('รหัสผ่านใหม่และการยืนยันไม่ตรงกัน', 'error');
-            return;
-        }
-
         const submitBtn = form.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         try {
-            await apiPost('changePassword', { currentPassword, newPassword });
-            showNotification('เปลี่ยนรหัสผ่านสำเร็จ', 'success');
-            close();
+            const keepOpen = (await onSubmit(form)) === false;
+            if (!keepOpen) close();
         } catch (error) {
             showNotification(error.message, 'error');
         } finally {
             submitBtn.disabled = false;
+        }
+    });
+    return overlay;
+}
+
+function passwordFieldsHtml(prefix) {
+    return `
+        <div class="form-group">
+            <label for="${prefix}New">รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)</label>
+            <input type="password" id="${prefix}New" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div class="form-group">
+            <label for="${prefix}Confirm">ยืนยันรหัสผ่านใหม่</label>
+            <input type="password" id="${prefix}Confirm" autocomplete="new-password" minlength="8" required>
+        </div>`;
+}
+
+// ตรวจรหัสผ่านใหม่ฝั่ง client (server ตรวจซ้ำเสมอ) — คืนรหัสผ่าน หรือ null ถ้าไม่ผ่าน
+function readNewPassword(form, prefix) {
+    const password = form.querySelector(`#${prefix}New`).value;
+    const confirm = form.querySelector(`#${prefix}Confirm`).value;
+    if (password.length < 8) {
+        showNotification('รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร', 'error');
+        return null;
+    }
+    if (password !== confirm) {
+        showNotification('รหัสผ่านใหม่และการยืนยันไม่ตรงกัน', 'error');
+        return null;
+    }
+    return password;
+}
+
+// ===== Change Password Dialog =====
+function showChangePasswordDialog({ forced = false } = {}) {
+    openFormDialog({
+        id: 'changePasswordDialog',
+        title: '<i class="fas fa-key"></i> เปลี่ยนรหัสผ่าน',
+        note: forced ? 'รหัสผ่านปัจจุบันเป็นรหัสชั่วคราว กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน' : '',
+        cancellable: !forced,
+        body: `
+            <div class="form-group">
+                <label for="cpCurrent">รหัสผ่านปัจจุบัน</label>
+                <input type="password" id="cpCurrent" autocomplete="current-password" required>
+            </div>
+            ${passwordFieldsHtml('cp')}`,
+        onSubmit: async (form) => {
+            const newPassword = readNewPassword(form, 'cp');
+            if (!newPassword) return false;
+            const currentPassword = form.querySelector('#cpCurrent').value;
+            await apiPost('changePassword', { currentPassword, newPassword });
+            showNotification('เปลี่ยนรหัสผ่านสำเร็จ', 'success');
         }
     });
 }

@@ -87,13 +87,17 @@ function showSection(sectionName) {
         loadDrugList();
     } else if (sectionName === 'dashboard') {
         loadData();
-    } else if (sectionName === 'settings') {
+    } else if (sectionName === 'settings' || sectionName === 'users') {
         if (!hasRole('admin')) {
             showNotification('เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเข้าถึงการตั้งค่า', 'warning');
             // Redirect to previous section
             const defaultSection = PAGE_SECTION_MAP[currentPage] || 'druglist';
             const defaultEl = document.getElementById(defaultSection);
             if (defaultEl) defaultEl.classList.add('active');
+            return;
+        }
+        if (sectionName === 'users') {
+            loadUserManagement();
             return;
         }
         // แสดง banner ถ้ายังไม่ได้ตั้งค่า webAppUrl

@@ -16,7 +16,7 @@ function setup({ now } = {}) {
             Drug_List: [['Drug Code', 'Drug Name', 'Group', 'HAD', 'Status']]
         }
     });
-    const addUser = (psCode, level, password, id13 = 'XXXXXXXXXXXXX') => {
+    const addUser = (psCode, level, password, id13 = '9990000000001') => {
         const stored = password === null ? '' : env.gs.hashPassword(password);
         env.sheets.Users.appendRow([psCode, id13, `ชื่อ ${psCode}`, 'เภสัชกร', level, '', stored, true]);
     };
@@ -55,8 +55,8 @@ test('isWeakPassword จับรหัสเริ่มต้น / สั้�
     const { env } = setup();
     assert.ok(env.gs.isWeakPassword('@12345', ''));
     assert.ok(env.gs.isWeakPassword('short', ''));
-    assert.ok(env.gs.isWeakPassword('XXXXXXXXXXXXX', 'XXXXXXXXXXXXX'));
-    assert.ok(!env.gs.isWeakPassword('Long-enough-1', 'XXXXXXXXXXXXX'));
+    assert.ok(env.gs.isWeakPassword('9990000000001', '9990000000001'));
+    assert.ok(!env.gs.isWeakPassword('Long-enough-1', '9990000000001'));
 });
 
 test('GET: login และ getErrors ถูกปิด, getDrugs ยังใช้ได้', () => {

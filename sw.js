@@ -1,10 +1,10 @@
 // เพิ่ม CACHE_VERSION ทุกครั้งที่เปลี่ยนรายการ ASSETS (tests/sw.test.js ตรวจว่าไฟล์มีอยู่จริง)
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 const CACHE_NAME = `predis-v${CACHE_VERSION}`;
 
 const JS_FILES = [
   'core', 'auth', 'app-shell', 'report-form', 'dashboard', 'form-validation',
-  'drug-sync', 'drug-list', 'analytics', 'export', 'init'
+  'drug-sync', 'drug-list', 'analytics', 'export', 'users', 'init'
 ].map(name => `./js/${name}.js`);
 
 const ASSETS = [
