@@ -7,7 +7,7 @@
     "test": "node --test \"tests/**/*.test.js\" \"tests/**/*.test.mjs\"",
     "lint": "eslint js apps-script.js sw.js tools mcp-server tests eslint.config.mjs",
     "check": "npm run lint && npm test",
-    "deploy:backend": "clasp push --force && clasp deploy -i AKfycbyKiaS7Y2l63sh0jfa56ZK4Ambw96VGo4bFxt1BNIbaIC5Btc7NEK3dpL-FkDQsWi7O -d \"$(git rev-parse --short HEAD)\""
+    "deploy:backend": "clasp push --force && clasp create-deployment -i AKfycbyKiaS7Y2l63sh0jfa56ZK4Ambw96VGo4bFxt1BNIbaIC5Btc7NEK3dpL-FkDQsWi7O -d \"$(git rev-parse --short HEAD)\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
