@@ -30,6 +30,14 @@
     --color-purple: #8B5CF6;
     --color-purple-light: #F5F3FF;
 
+    /* ข้อความบนพื้นสีอ่อน (contrast ≥ 4.5:1) */
+    --color-success-text: #047857;
+    --color-warning-text: #B45309;
+    --color-danger-text: #B91C1C;
+    --color-info-text: #0369A1;
+    --color-input-bg: #FFFFFF;
+    --color-surface-glass: rgba(255, 255, 255, 0.95);
+
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
@@ -631,10 +639,10 @@ table tbody tr.my-report:hover {
     letter-spacing: 0.01em;
 }
 
-.tag-success { background: var(--color-success-light); color: var(--color-success); }
-.tag-warning { background: var(--color-warning-light); color: var(--color-warning); }
-.tag-danger  { background: var(--color-danger-light);  color: var(--color-danger); }
-.tag-info    { background: var(--color-info-light);    color: var(--color-info); }
+.tag-success { background: var(--color-success-light); color: var(--color-success-text); }
+.tag-warning { background: var(--color-warning-light); color: var(--color-warning-text); }
+.tag-danger  { background: var(--color-danger-light);  color: var(--color-danger-text); }
+.tag-info    { background: var(--color-info-light);    color: var(--color-info-text); }
 .tag-secondary { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
 
 .severity-low      { background: var(--color-success-light); color: var(--color-success); padding: 3px 10px; border-radius: var(--radius-full); }
@@ -795,7 +803,7 @@ table tbody tr.my-report:hover {
 
 /* --- 6.2 Header & Nav --- */
 header {
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--color-surface-glass);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--color-border);
@@ -995,7 +1003,7 @@ nav::-webkit-scrollbar { display: none; }
 }
 
 .had-drugs-list {
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--color-surface-glass);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: 12px;
@@ -2111,7 +2119,7 @@ nav::-webkit-scrollbar { display: none; }
 .searchable-dropdown-container input {
     position: relative;
     z-index: 1;
-    background: white;
+    background-color: var(--color-input-bg);
     transition: all var(--transition-fast);
     padding-right: 40px;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
@@ -2849,4 +2857,191 @@ nav::-webkit-scrollbar { display: none; }
     animation: invalid-shake 0.4s ease-in-out;
     border-color: #DC2626 !important;
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+/* ========================================
+   DARK MODE — ตามการตั้งค่าเครื่อง (สลับเองได้ด้วย data-theme บน <html>)
+   ======================================== */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+    --color-bg: #0F172A;
+    --color-bg-secondary: #111C31;
+    --color-bg-tertiary: #1E293B;
+    --color-border: #334155;
+    --color-border-light: #1E293B;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #A3B1C6;
+    --color-text-tertiary: #8291A7;
+    --color-accent: #60A5FA;
+    --color-accent-light: #172554;
+    --color-accent-hover: #93C5FD;
+    --color-accent-dark: #BFDBFE;
+    --color-success-light: #052E26;
+    --color-warning-light: #3A2A06;
+    --color-danger-light: #3B1010;
+    --color-info-light: #082F49;
+    --color-purple-light: #2E1065;
+    --color-success-text: #6EE7B7;
+    --color-warning-text: #FCD34D;
+    --color-danger-text: #FCA5A5;
+    --color-info-text: #7DD3FC;
+    --color-input-bg: #0B1324;
+    --color-surface-glass: rgba(15, 23, 42, 0.92);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+    }
+}
+
+:root[data-theme="dark"] {
+    --color-bg: #0F172A;
+    --color-bg-secondary: #111C31;
+    --color-bg-tertiary: #1E293B;
+    --color-border: #334155;
+    --color-border-light: #1E293B;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #A3B1C6;
+    --color-text-tertiary: #8291A7;
+    --color-accent: #60A5FA;
+    --color-accent-light: #172554;
+    --color-accent-hover: #93C5FD;
+    --color-accent-dark: #BFDBFE;
+    --color-success-light: #052E26;
+    --color-warning-light: #3A2A06;
+    --color-danger-light: #3B1010;
+    --color-info-light: #082F49;
+    --color-purple-light: #2E1065;
+    --color-success-text: #6EE7B7;
+    --color-warning-text: #FCD34D;
+    --color-danger-text: #FCA5A5;
+    --color-info-text: #7DD3FC;
+    --color-input-bg: #0B1324;
+    --color-surface-glass: rgba(15, 23, 42, 0.92);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+}
+
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
+:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* ========================================
+   STATUS BANNERS (โหลดยาไม่สำเร็จ / ร่าง / คิวออฟไลน์)
+   ======================================== */
+.load-error-banner,
+.draft-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+}
+
+.load-error-banner {
+    background: var(--color-danger-light);
+    color: var(--color-danger-text);
+    border-left: 3px solid var(--color-danger);
+}
+
+.draft-banner {
+    background: var(--color-info-light);
+    color: var(--color-info-text);
+    border-left: 3px solid var(--color-info);
+}
+
+.outbox-badge {
+    background: var(--color-warning-light);
+    color: var(--color-warning-text);
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.outbox-badge.has-error {
+    background: var(--color-danger-light);
+    color: var(--color-danger-text);
+    border-color: var(--color-danger);
+}
+
+/* ========================================
+   TABLES → CARDS บนจอแคบ (data-label ถูกเติมโดย js/app-shell.js)
+   ======================================== */
+@media (max-width: 640px) {
+    .responsive-cards thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .responsive-cards,
+    .responsive-cards tbody,
+    .responsive-cards tr,
+    .responsive-cards td {
+        display: block;
+        width: 100%;
+    }
+
+    .responsive-cards tr {
+        border-bottom: 1px solid var(--color-border);
+        padding: var(--space-2) 0;
+    }
+
+    .data-table.responsive-cards td,
+    .data-table.responsive-cards td:last-child {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--space-3);
+        padding: 6px var(--space-4);
+        border: none;
+        text-align: right;
+        white-space: normal;
+    }
+
+    .responsive-cards td[data-label]::before {
+        content: attr(data-label);
+        flex: 0 0 40%;
+        text-align: left;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+    }
+
+    .responsive-cards td[colspan] {
+        justify-content: center;
+        text-align: center;
+    }
+
+    .responsive-cards td[colspan]::before {
+        content: none;
+    }
+
+    .user-actions {
+        white-space: normal;
+        flex-wrap: wrap;
+    }
 }

@@ -15,7 +15,7 @@ let analyticsData = {
 
 // Main analytics generation function
 function generateAdvancedAnalytics(data) {
-    console.log('Generating advanced analytics for data:', data);
+    debugLog('Generating advanced analytics for data:', data);
 
     if (!data || data.length === 0) {
         resetAllAnalytics();
@@ -50,7 +50,7 @@ function generateAdvancedAnalytics(data) {
     updateTimeDistribution();
     generateMonthlyTrendChart();
 
-    console.log('Analytics generation completed');
+    debugLog('Analytics generation completed');
 }
 
 // Process data for analytics

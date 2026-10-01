@@ -37,6 +37,10 @@ const ROLE_ACTIONS = {
 };
 
 const USER_LEVELS = ['user', 'pharmacist', 'supervisor', 'admin'];
+
+// ระดับที่เห็นรายงานของทุกคนแบบเต็ม — ระดับ user เห็นรายงานคนอื่นแบบไม่ระบุตัวตน
+const FULL_REPORT_ACCESS = ['admin', 'supervisor', 'pharmacist'];
+const REDACTED_REPORTER = '(ผู้รายงานอื่น)';
 const USER_GROUPS = ['เภสัชกร', 'เจ้าพนักงานเภสัชกรรม', 'อื่นๆ'];
 const RESET_SHEET = 'Password_Resets';
 
@@ -316,7 +320,7 @@ function doPost(e) {
         destroySession(data.token);
         return jsonResponse({ success: true });
       case 'getErrors':
-        return getErrorsFromSheet();
+        return getErrorsFromSheet(session);
       case 'append':
         return appendError(data, session, e);
       case 'changePassword':
@@ -626,15 +630,33 @@ function getDrugsFromSheet() {
   }
 }
 
+function isOwnReport(row, session) {
+  var reporter = String(row[11] || '');
+  return reporter.indexOf('(' + session.psCode + ')') !== -1 ||
+    (session.name && reporter.indexOf(session.name) !== -1);
+}
+
+// ระดับ user: รายงานของคนอื่นตัดชื่อผู้รายงานและรายละเอียดเพิ่มเติมออก (ยังใช้ทำสถิติได้)
+function redactReportsFor(values, session) {
+  if (FULL_REPORT_ACCESS.indexOf(session.level) !== -1) return values;
+  return values.map(function(row, i) {
+    if (i === 0 || isOwnReport(row, session)) return row;
+    var copy = row.slice();
+    copy[10] = '';
+    copy[11] = REDACTED_REPORTER;
+    return copy;
+  });
+}
+
 // Get errors from Predispensing_Errors sheet (authenticated)
-function getErrorsFromSheet() {
+function getErrorsFromSheet(session) {
   try {
     var errorSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(ERROR_SHEET);
     if (!errorSheet) {
       return jsonResponse({ success: true, data: [], message: 'ไม่พบ Sheet "' + ERROR_SHEET + '"' });
     }
 
-    var values = errorSheet.getDataRange().getValues();
+    var values = redactReportsFor(errorSheet.getDataRange().getValues(), session);
     return jsonResponse({ success: true, data: values, count: values.length, timestamp: new Date().toISOString() });
 
   } catch (error) {

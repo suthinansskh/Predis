@@ -108,36 +108,93 @@ function showSection(sectionName) {
     }
 }
 
-// Initialize form with current date and generate report ID
-function initializeForm() {
-    const now = new Date();
-    const pad = n => n.toString().padStart(2, '0');
-    const localDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-    const tsEl = document.getElementById('timestamp');
-    const eventDateEl = document.getElementById('eventDate');
-    if (tsEl) tsEl.value = localDateTime;
-    if (eventDateEl) eventDateEl.value = localDate;
+// ===== Theme (ระบบ / สว่าง / มืด) =====
 
-    // Generate Report ID
-    generateReportId();
+const THEME_KEY = 'predisTheme';
+const THEME_CYCLE = ['auto', 'light', 'dark'];
+const THEME_LABELS = { auto: 'ตามระบบ', light: 'โหมดสว่าง', dark: 'โหมดมืด' };
+const THEME_ICONS = { auto: 'fa-circle-half-stroke', light: 'fa-sun', dark: 'fa-moon' };
 
-    // Populate process dropdown and setup error options
-    populateProcessSelect();
+function getThemePreference() {
+    try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch (_) { return 'auto'; }
+}
 
-    // Load drug list for drug dropdowns
-    loadDrugList();
-
-    // Add search functionality to drug input fields
-    setupDrugSearchInputs();
-
-    // Set reporter name
-    const reporterEl = document.getElementById('reporter');
-    if (reporterEl && currentUser) {
-        const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
-        reporterEl.value = reporterValue;
-    } else if (reporterEl) {
-        reporterEl.value = 'รอโหลดชื่อผู้ใช้งาน...';
+function applyTheme(theme) {
+    if (theme === 'auto') {
+        document.documentElement.removeAttribute('data-theme');
+    } else {
+        document.documentElement.setAttribute('data-theme', theme);
+    }
+    applyChartTheme();
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+        btn.innerHTML = `<i class="fas ${THEME_ICONS[theme]}" aria-hidden="true"></i>`;
+        btn.title = `ธีม: ${THEME_LABELS[theme]} (กดเพื่อเปลี่ยน)`;
+        btn.setAttribute('aria-label', btn.title);
     }
 }
+
+function setupThemeToggle() {
+    const anchor = document.getElementById('changePasswordBtn');
+    if (!anchor || document.getElementById('themeToggleBtn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'themeToggleBtn';
+    btn.className = 'logout-btn';
+    btn.addEventListener('click', () => {
+        const next = THEME_CYCLE[(THEME_CYCLE.indexOf(getThemePreference()) + 1) % THEME_CYCLE.length];
+        try { localStorage.setItem(THEME_KEY, next); } catch (_) { /* ignore */ }
+        applyTheme(next);
+        // กราฟต้องวาดใหม่เพื่อใช้สีของธีมใหม่
+        if (typeof renderDashboard === 'function') renderDashboard();
+    });
+    anchor.before(btn);
+    applyTheme(getThemePreference());
+}
+
+function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// Chart.js ใช้สีตายตัว — ตั้งให้ตามธีม (หน้าที่ไม่มีกราฟข้ามไป)
+function applyChartTheme() {
+    if (typeof Chart === 'undefined') return;
+    Chart.defaults.color = cssVar('--color-text-secondary');
+    Chart.defaults.borderColor = cssVar('--color-border');
+}
+
+// ===== ตาราง → การ์ดบนมือถือ: เติม data-label จากหัวตาราง =====
+
+function labelResponsiveTable(table) {
+    const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        [...tr.children].forEach((td, i) => {
+            if (headers[i] && !td.hasAttribute('colspan')) td.setAttribute('data-label', headers[i]);
+        });
+    });
+}
+
+function watchResponsiveTables() {
+    document.querySelectorAll('table.responsive-cards').forEach(labelResponsiveTable);
+    new MutationObserver(mutations => {
+        const tables = new Set();
+        mutations.forEach(m => {
+            const table = m.target.closest && m.target.closest('table.responsive-cards');
+            if (table) tables.add(table);
+            m.addedNodes.forEach(node => {
+                if (node.nodeType === 1 && node.querySelectorAll) {
+                    node.querySelectorAll('table.responsive-cards').forEach(t => tables.add(t));
+                }
+            });
+        });
+        tables.forEach(labelResponsiveTable);
+    }).observe(document.body, { childList: true, subtree: true });
+}
+
+applyTheme(getThemePreference());
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(getThemePreference()));
+document.addEventListener('DOMContentLoaded', () => {
+    setupThemeToggle();
+    watchResponsiveTables();
+});

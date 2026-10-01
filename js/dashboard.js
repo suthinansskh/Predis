@@ -1,7 +1,43 @@
 // Dashboard: โหลดข้อมูล, filter, สรุป, รายงานรายเดือน, ตาราง
 // โหลดเป็น classic script ตามลำดับใน JS_FILES (ดู sw.js / *.html)
 
-// Dashboard functions
+// Pagination state
+let currentTablePage = 1;
+let cachedValidRows = [];
+
+async function readFromGoogleSheet() {
+    const result = await apiPost('getErrors');
+    return result.data || [];
+}
+
+// ข้อมูลรายงานล่าสุดจาก server (ไม่รวม header) — filter ใช้ข้อมูลนี้โดยไม่ต้องดึงใหม่
+let dashboardRows = null;
+
+function isHeaderRow(row) {
+    if (!Array.isArray(row)) return false;
+    return String(row[1] || '').trim().toLowerCase() === 'reportid' ||
+        /timestamp|วันที่|date/i.test(String(row[0] || ''));
+}
+
+// คำนวณและแสดงผล dashboard ใหม่จากข้อมูลที่ cache ไว้ (เช่น เมื่อเปลี่ยนธีม — กราฟต้องวาดใหม่)
+function renderDashboard() {
+    if (!dashboardRows) return;
+    const filteredData = applyUserFilter(dashboardRows);
+    lastUserFilteredData = filteredData.slice();
+
+    updateDashboard(dashboardRows, filteredData);
+    currentTablePage = 1;
+    populateTable(filteredData);
+
+    if (!window._analyticsFilterUIInitialized) {
+        initAnalyticsFilterUI();
+        window._analyticsFilterUIInitialized = true;
+    }
+    refreshAdvancedAnalytics();
+}
+
+
+// Dashboard functions — ดึงข้อมูลจาก server (ปุ่มรีเฟรช / เปิดหน้า)
 async function loadData() {
     try {
         const loadBtn = document.querySelector('.load-btn');
@@ -31,33 +67,15 @@ async function loadData() {
         }
 
         // Skip header row if it exists
-        const hasHeader = data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('timestamp');
-        const errorData = hasHeader ? data.slice(1) : data;
+        const errorData = isHeaderRow(data[0]) ? data.slice(1) : data;
 
         // เก็บ Report IDs ที่มีอยู่แล้วเพื่อป้องกันการซ้ำ
         loadExistingReportIds(data);
 
-        // Apply user-based filtering
-        const filteredData = applyUserFilter(errorData);
-        lastUserFilteredData = filteredData.slice();
+        dashboardRows = errorData;
+        renderDashboard();
 
-        updateDashboard(errorData, filteredData);
-        currentTablePage = 1;
-        populateTable(filteredData);
-
-        // Initialize analytics filter UI once
-        if (!window._analyticsFilterUIInitialized) {
-            initAnalyticsFilterUI();
-            window._analyticsFilterUIInitialized = true;
-        }
-
-        // Generate advanced analytics (respect analytics filters)
-        refreshAdvancedAnalytics();
-
-        // Update dashboard user info
-        updateDashboardUserInfo();
-
-        showNotification('โหลดข้อมูลเรียบร้อยแล้ว!', 'success');
+        showNotification(`โหลดข้อมูลแล้ว ${errorData.length} รายการ`, 'success');
 
     } catch (error) {
         console.error('Error loading data:', error);
@@ -86,7 +104,7 @@ function loadExistingReportIds(data) {
             }
         });
 
-        console.log(`Loaded ${usedReportIds.size} existing Report IDs for duplicate prevention`);
+        debugLog(`Loaded ${usedReportIds.size} existing Report IDs for duplicate prevention`);
     }
 }
 
@@ -202,6 +220,8 @@ function applyAnalyticsFiltersToData(baseData) {
 }
 
 function refreshAdvancedAnalytics() {
+    // หน้า myreport ไม่มีส่วนวิเคราะห์ขั้นสูง (ไม่โหลด analytics.js)
+    if (typeof generateAdvancedAnalytics !== 'function') return;
     const filteredForAnalytics = applyAnalyticsFiltersToData(lastUserFilteredData);
     generateAdvancedAnalytics(filteredForAnalytics);
     updateAnalyticsFilterSummary();
@@ -301,7 +321,7 @@ function initAnalyticsFilterUI() {
 }
 
 function updateDashboard(allData, filteredData) {
-    console.log('Updating dashboard with all data:', allData?.length, 'filtered:', filteredData?.length);
+    debugLog('Updating dashboard with all data:', allData?.length, 'filtered:', filteredData?.length);
 
     if (!allData || allData.length === 0) {
         document.getElementById('totalErrors').textContent = '0';
@@ -331,8 +351,13 @@ function updateDashboard(allData, filteredData) {
     let lastMonthTrend = 0;
 
     // Process all data for total counts
-    allData.forEach((row, index) => {
-        if (index === 0 || !row[0] || !row[1]) return;
+    // ปีงบประมาณ (1 ต.ค. – 30 ก.ย.)
+    const fiscalYearStart = new Date(now.getMonth() >= 9 ? thisYear : thisYear - 1, 9, 1);
+    let fiscalYearCount = 0;
+
+    // Process all data for total counts (allData ไม่มีแถว header แล้ว — ดู isHeaderRow)
+    allData.forEach((row) => {
+        if (!row[0] || !row[1]) return;
 
         try {
             const errorDate = new Date(row[0]);
@@ -340,6 +365,7 @@ function updateDashboard(allData, filteredData) {
 
             if (!isNaN(errorDate.getTime())) {
                 totalCount++;
+                if (errorDate >= fiscalYearStart && errorDate <= now) fiscalYearCount++;
 
                 // Count user's own reports
                 if (currentUser && (
@@ -392,8 +418,8 @@ function updateDashboard(allData, filteredData) {
     if (filteredData && filteredData !== allData) {
         monthlyCount = 0;
 
-        filteredData.forEach((row, index) => {
-            if (index === 0 || !row[0] || !row[1]) return;
+        filteredData.forEach((row) => {
+            if (!row[0] || !row[1]) return;
 
             try {
                 const errorDate = new Date(row[0]);
@@ -414,6 +440,7 @@ function updateDashboard(allData, filteredData) {
     if (legacyTotal) legacyTotal.textContent = totalCount;
 
     var elAllTime = document.getElementById('totalAllTime'); if (elAllTime) elAllTime.textContent = totalCount;
+    var elYear = document.getElementById('totalYear'); if (elYear) elYear.textContent = fiscalYearCount;
     var elMonth = document.getElementById('totalMonth'); if (elMonth) elMonth.textContent = monthlyCount;
     var elWeek = document.getElementById('totalWeek'); if (elWeek) elWeek.textContent = sevenDayCount;
     var elToday = document.getElementById('totalToday'); if (elToday) elToday.textContent = todayCount;
@@ -559,8 +586,8 @@ function buildMonthlyReportByYear(dataArg) {
     const showOnlyMe = scopeSelect ? scopeSelect.value === 'me' : true;
 
     // Filter data to current user if scope = me
-    const filtered = allData.filter((row, idx) => {
-        if (idx === 0 || !row[0] || !row[1]) return false;
+    const filtered = allData.filter((row) => {
+        if (!row[0] || !row[1]) return false;
         try {
             const d = new Date(row[0]);
             if (isNaN(d.getTime())) return false;

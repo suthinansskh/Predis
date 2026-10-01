@@ -207,3 +207,22 @@ test('forceResetWeakPasswords ออกรหัสชั่วคราวใ�
     assert.equal(res.mustChangePassword, true);
     assert.equal(login(env, 'U01', 'StrongPass#1').mustChangePassword, false);
 });
+
+test('getErrors: ระดับ user เห็นรายงานคนอื่นแบบไม่ระบุตัวตน, pharmacist ขึ้นไปเห็นทั้งหมด', () => {
+    const { env, addUser } = setup();
+    addUser('P01', 'pharmacist', 'PharmPass#11');
+    const sheet = env.sheets.Predispensing_Errors;
+    sheet.appendRow(['2026-10-01', 'R1', 'เช้า', 'x', 'OPD', 'จัดยา', 'd', 'a', 'b', 'c', 'ข้อมูลลับ 1', 'ชื่อ U01 (U01) - เภสัชกร/user', 't']);
+    sheet.appendRow(['2026-10-01', 'R2', 'เช้า', 'x', 'OPD', 'จัดยา', 'd', 'a', 'b', 'c', 'ข้อมูลลับ 2', 'คนอื่น (P01) - เภสัชกร/pharmacist', 't']);
+
+    const asUser = env.post({ action: 'getErrors', token: login(env, 'U01', 'StrongPass#1').token }).data;
+    assert.equal(asUser.length, 3, 'ยังได้ทุกแถว (ใช้ทำสถิติ)');
+    assert.equal(asUser[1][10], 'ข้อมูลลับ 1', 'รายงานของตัวเองเห็นครบ');
+    assert.equal(asUser[2][10], '');
+    assert.equal(asUser[2][11], '(ผู้รายงานอื่น)');
+    assert.equal(asUser[2][1], 'R2');
+
+    const asPharm = env.post({ action: 'getErrors', token: login(env, 'P01', 'PharmPass#11').token }).data;
+    assert.equal(asPharm[1][11], 'ชื่อ U01 (U01) - เภสัชกร/user');
+    assert.equal(asPharm[1][10], 'ข้อมูลลับ 1');
+});

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>Predispensing Error Recorder</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563EB">
@@ -211,7 +212,7 @@
                             <i class="fas fa-search search-icon"></i>
                             <input
                                 type="text"
-                                id="searchDrug"
+                                id="searchDrug" aria-label="ค้นหายา"
                                 class="modern-search-input"
                                 placeholder="ค้นหารายการยา... (รองรับ fuzzy search)"
                                 oninput="filterDrugsModern()"
@@ -225,7 +226,7 @@
                                 <label class="filter-chip-label">
                                     <i class="fas fa-layer-group"></i> กลุ่มยา:
                                 </label>
-                                <select id="filterGroup" class="modern-select" onchange="filterDrugsModern()">
+                                <select id="filterGroup" aria-label="กรองตามกลุ่มยา" class="modern-select" onchange="filterDrugsModern()">
                                     <option value="">ทั้งหมด</option>
                                     <option value="Antibiotic">ยาปฏิชีวนะ</option>
                                     <option value="Analgesic">ยาแก้ปวด</option>
@@ -244,7 +245,7 @@
                                 <label class="filter-chip-label">
                                     <i class="fas fa-exclamation-triangle"></i> สถานะ HAD:
                                 </label>
-                                <select id="filterHAD" class="modern-select" onchange="filterDrugsModern()">
+                                <select id="filterHAD" aria-label="กรองตามสถานะ HAD" class="modern-select" onchange="filterDrugsModern()">
                                     <option value="">ทั้งหมด</option>
                                     <option value="High">High Alert Drug</option>
                                     <option value="Regular">ยาทั่วไป</option>
@@ -254,7 +255,7 @@
                                 <label class="filter-chip-label">
                                     <i class="fas fa-toggle-on"></i> สถานะ:
                                 </label>
-                                <select id="filterStatus" class="modern-select" onchange="filterDrugsModern()">
+                                <select id="filterStatus" aria-label="กรองตามสถานะการใช้งาน" class="modern-select" onchange="filterDrugsModern()">
                                     <option value="">ทั้งหมด</option>
                                     <option value="Active">ใช้งาน</option>
                                     <option value="Inactive">ไม่ใช้งาน</option>
@@ -273,7 +274,7 @@
 
                 <!-- Drug List Table -->
                 <div class="table-container">
-                    <table id="drugTable" class="data-table">
+                    <table id="drugTable" class="data-table responsive-cards">
                         <thead>
                             <tr>
                                 <th>รหัสยา</th>
@@ -532,18 +533,15 @@
         </section>
     </div> <!-- End mainApp -->
 
-    <div id="notification" class="notification"></div>
+    <div id="notification" class="notification" role="status" aria-live="polite"></div>
 
     <script src="js/core.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/app-shell.js"></script>
     <script src="js/report-form.js"></script>
-    <script src="js/dashboard.js"></script>
-    <script src="js/form-validation.js"></script>
-    <script src="js/drug-sync.js"></script>
     <script src="js/drug-list.js"></script>
-    <script src="js/analytics.js"></script>
-    <script src="js/export.js"></script>
+    <script src="js/drug-sync.js"></script>
+    <script src="js/outbox.js"></script>
     <script src="js/users.js"></script>
     <script src="js/init.js"></script>
     <script>

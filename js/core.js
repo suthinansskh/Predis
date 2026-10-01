@@ -82,6 +82,38 @@ function normalizeWebAppUrl(url) {
     return trimmedUrl;
 }
 
+// ===== Shared utilities =====
+
+// เปิด log สำหรับ debug: localStorage.setItem('predisDebug', '1') แล้วรีโหลด
+const DEBUG = (() => {
+    try { return localStorage.getItem('predisDebug') === '1'; } catch (_) { return false; }
+})();
+
+function debugLog(...args) {
+    if (DEBUG) console.log(...args);
+}
+
+// Report IDs ที่มีอยู่แล้ว (โหลดจาก dashboard) — ใช้กันสร้าง ID ซ้ำ
+let usedReportIds = new Set();
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const str = String(text);
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function sanitizeForSheet(value) {
+    if (value === null || value === undefined) return '';
+    let str = String(value).trim();
+    // Remove characters that could trigger formula injection
+    if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+    }
+    // Remove null bytes
+    str = str.replace(/\0/g, '');
+    return str;
+}
+
 // ===== Session & API =====
 const SESSION_STORAGE_KEY = 'predisSession';
 
@@ -130,7 +162,9 @@ async function apiPost(action, fields = {}) {
     try {
         response = await fetch(googleSheetsConfig.webAppUrl, { method: 'POST', body: formData, redirect: 'follow' });
     } catch (networkError) {
-        throw new Error('ไม่สามารถเชื่อมต่อ Server ได้ กรุณาตรวจสอบเน็ตเวิร์ค แล้วลองใหม่', { cause: networkError });
+        const error = new Error('ไม่สามารถเชื่อมต่อ Server ได้ กรุณาตรวจสอบเน็ตเวิร์ค แล้วลองใหม่', { cause: networkError });
+        error.network = true;
+        throw error;
     }
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -146,7 +180,9 @@ async function apiPost(action, fields = {}) {
     if (result.authRequired) {
         clearSession();
         showLoginPage();
-        throw new Error(result.error || 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+        const error = new Error(result.error || 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+        error.authRequired = true;
+        throw error;
     }
     if (!result.success) {
         const error = new Error(result.error || 'เกิดข้อผิดพลาดจาก Server');

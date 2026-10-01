@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>แดชบอร์ด - Predispensing Error Recorder</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563EB">
@@ -231,7 +232,7 @@
                             <div class="card-header">
                                 <h4><i class="fas fa-exclamation-triangle"></i> ข้อผิดพลาด</h4>
                                 <div class="card-actions">
-                                    <select id="errorProcessFilter" onchange="filterErrorByProcess()">
+                                    <select id="errorProcessFilter" aria-label="กรองข้อผิดพลาดตามกระบวนการ" onchange="filterErrorByProcess()">
                                         <option value="all">ทุกกระบวนการ</option>
                                         <option value="จัดยา">จัดยา</option>
                                         <option value="ลงข้อมูล">ลงข้อมูล</option>
@@ -269,7 +270,7 @@
                             <div class="card-header">
                                 <h4><i class="fas fa-search"></i> สาเหตุของข้อผิดพลาด</h4>
                                 <div class="card-actions">
-                                    <select id="processFilter" onchange="filterCauseByProcess()">
+                                    <select id="processFilter" aria-label="กรองตามกระบวนการ" onchange="filterCauseByProcess()">
                                         <option value="all">ทุกกระบวนการ</option>
                                         <option value="จัดยา">จัดยา</option>
                                         <option value="ลงข้อมูล">ลงข้อมูล</option>
@@ -307,7 +308,7 @@
                             <div class="card-header">
                                 <h4><i class="fas fa-pills"></i> รายการยาที่ถูกต้อง</h4>
                                 <div class="card-actions">
-                                    <select id="drugProcessFilter" onchange="filterDrugByProcess()">
+                                    <select id="drugProcessFilter" aria-label="กรองสถิติยาตามกระบวนการ" onchange="filterDrugByProcess()">
                                         <option value="all">ทุกกระบวนการ</option>
                                         <option value="จัดยา">จัดยา</option>
                                         <option value="ลงข้อมูล">ลงข้อมูล</option>
@@ -425,7 +426,7 @@
                             <div class="card-header">
                                 <h4><i class="fas fa-chart-line"></i> แนวโน้มรายเดือน (6 เดือนล่าสุด)</h4>
                                 <div class="card-actions">
-                                    <select id="trendPeriod" onchange="updateTrendChart()">
+                                    <select id="trendPeriod" aria-label="ช่วงเวลาของแนวโน้ม" onchange="updateTrendChart()">
                                         <option value="6">6 เดือน</option>
                                         <option value="12">12 เดือน</option>
                                         <option value="24">24 เดือน</option>
@@ -458,8 +459,8 @@
                     <div class="section-header">
                         <h3><i class="fas fa-table"></i> ตารางข้อมูลรายละเอียด</h3>
                         <div class="table-controls">
-                            <input type="text" id="tableSearch" placeholder="ค้นหาในตาราง..." class="search-input">
-                            <select id="tablePageSize" class="page-size-select" onchange="tablePageSizeChanged()">
+                            <input type="text" id="tableSearch" aria-label="ค้นหาในตาราง" placeholder="ค้นหาในตาราง..." class="search-input">
+                            <select id="tablePageSize" aria-label="จำนวนแถวต่อหน้า" class="page-size-select" onchange="tablePageSizeChanged()">
                                 <option value="25">25 รายการ</option>
                                 <option value="50">50 รายการ</option>
                                 <option value="100">100 รายการ</option>
@@ -485,7 +486,7 @@
                             </span>
                         </div>
                         <div class="table-wrapper">
-                            <table id="errorTable" class="data-table">
+                            <table id="errorTable" class="data-table responsive-cards">
                                 <thead>
                                     <tr>
                                         <th class="sortable" data-sort="reportId">
@@ -559,18 +560,15 @@
         </section>
     </div>
 
-    <div id="notification" class="notification"></div>
+    <div id="notification" class="notification" role="status" aria-live="polite"></div>
 
     <script src="js/core.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/app-shell.js"></script>
-    <script src="js/report-form.js"></script>
     <script src="js/dashboard.js"></script>
-    <script src="js/form-validation.js"></script>
-    <script src="js/drug-sync.js"></script>
-    <script src="js/drug-list.js"></script>
     <script src="js/analytics.js"></script>
     <script src="js/export.js"></script>
+    <script src="js/outbox.js"></script>
     <script src="js/users.js"></script>
     <script src="js/init.js"></script>
     <script>

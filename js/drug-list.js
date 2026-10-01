@@ -2,239 +2,116 @@
 // โหลดเป็น classic script ตามลำดับใน JS_FILES (ดู sw.js / *.html)
 
 // Drug List Management Functions
-async function loadDrugList() {
-    try {
-        let loadedFromSheet = false;
 
-        // 1. Try loading from Google Sheets API first (Highest Priority)
-        if (googleSheetsConfig.webAppUrl) {
-            try {
-                const drugUrl = googleSheetsConfig.webAppUrl + '?action=getDrugs';
-                const response = await fetch(drugUrl, { redirect: 'follow' });
-                const result = await response.json();
+let drugListLoadPromise = null;
+let drugListLoaded = false;
 
-                if (result.success) {
-                    drugListData = result.data || [];
-
-                    // Map from getDrugs format to standard format
-                    drugListData = drugListData.map(d => ({
-                        drugCode: d.code || d.drugCode || '',
-                        drugName: d.name || d.drugName || '',
-                        group: d.group || '',
-                        had: (d.had === 'High' || d.had === 1 || d.had === '1') ? 'High' : 'Regular',
-                        status: d.status ? 'Active' : 'Inactive',
-                        unit: d.unit || '',
-                        strength: d.strength || '',
-                        dosageForm: d.dosageForm || '',
-                        tmtCode: d.tmtCode || '',
-                        unitPrice: d.unitPrice || 0
-                    }));
-
-                    // ทำความสะอาดและอัปเดต globalDrugList
-                    globalDrugList = cleanDrugData(drugListData);
-
-                    renderDrugTable();
-                    updateDrugStats();
-                    setupSearchableDropdowns();
-                    showNotification(`โหลดรายการยาจาก Google Sheets สำเร็จ (${result.count} รายการ)`, 'success');
-
-                    // แสดงรายการ HAD จากฐานข้อมูล
-                    displayHADListFromDatabase(globalDrugList);
-
-                    loadedFromSheet = true;
-                    return;
-                } else {
-                    console.warn('Web App returned error for getDrugs:', result.error);
-                }
-            } catch (webAppError) {
-                console.log('Web App failed, trying fallback sources:', webAppError);
-                
-                // Try form submission fallback
-                try {
-                    const success = await loadDrugListViaForm();
-                    if (success) {
-                        showNotification('โหลดรายการยาเรียบร้อย (ผ่าน form)', 'success');
-                        return;
-                    }
-                } catch (formError) {
-                    console.log('Form submission also failed:', formError);
-                }
-
-                // If both methods fail, try Google Sheets API
-                console.log('Form submission failed, trying Google Sheets API fallback');
-                try {
-                    return await loadDrugListFromAPI();
-                } catch (apiError) {
-                    console.log('API also failed', apiError);
-                }
-            }
-        }
-
-        // 2. Fallback: Try loading from local drug_list.json
-        if (!loadedFromSheet) {
-            try {
-                const response = await fetch('drug_list.json');
-                if (response.ok) {
-                    const drugs = await response.json();
-                    if (Array.isArray(drugs) && drugs.length > 0) {
-                        drugListData = drugs;
-                        globalDrugList = cleanDrugData(drugs);
-                        setupDrugSearchInputs();
-                        renderDrugTable();
-                        updateDrugStats();
-                        displayHADListFromDatabase(globalDrugList);
-                        showNotification(`โหลดรายการยาจากไฟล์สำรองท้องถิ่น (${globalDrugList.length} รายการ)`, 'info');
-                        console.log(`โหลดรายการยาจาก drug_list.json: ${globalDrugList.length} รายการ`);
-                        return;
-                    }
-                }
-            } catch (jsonError) {
-                console.log('drug_list.json not available, trying other sources:', jsonError.message);
-            }
-        }
-
-        // 3. Last Resort: Demo Mode
-        if (!googleSheetsConfig.webAppUrl || !loadedFromSheet) {
-            console.log('Demo Mode: ใช้ข้อมูลยาตัวอย่าง');
-            createSampleDrugData();
-            return drugListData;
-        }
-
-    } catch (error) {
-        console.error('Error loading drug list:', error);
-        showNotification('ไม่สามารถโหลดรายการยาได้ - ใช้ข้อมูลตัวอย่าง', 'warning');
-
-        // Use sample data as final fallback
-        createSampleDrugData();
-    }
+function normalizeWebAppDrug(d) {
+    return {
+        drugCode: String(d.code || d.drugCode || ''),
+        drugName: d.name || d.drugName || '',
+        group: d.group || '',
+        had: (d.had === 'High' || d.had === 1 || d.had === '1') ? 'High' : 'Regular',
+        status: d.status ? 'Active' : 'Inactive',
+        unit: d.unit || '',
+        strength: d.strength || '',
+        dosageForm: d.dosageForm || '',
+        tmtCode: d.tmtCode || '',
+        unitPrice: d.unitPrice || 0
+    };
 }
 
-// Fallback: Load drug list using Google Sheets API
-async function loadDrugListFromAPI() {
-    try {
-        if (!googleSheetsConfig.apiKey || !googleSheetsConfig.spreadsheetId) {
-            showNotification('กรุณาตั้งค่า API Key และ Spreadsheet ID ก่อน', 'error');
-            return;
-        }
-
-        console.log('Loading drug list from API with drugSheetName:', googleSheetsConfig.drugSheetName);
-        const range = `${googleSheetsConfig.drugSheetName}!A:J`;
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${googleSheetsConfig.spreadsheetId}/values/${range}?key=${googleSheetsConfig.apiKey}`;
-
-        console.log('API URL:', url);
-        const response = await fetch(url);
-        const data = await response.json();
-
-        console.log('API Response:', data);
-
-        if (data.error) {
-            console.error('API Error:', data.error);
-            // If sheet doesn't exist, create empty drug list
-            drugListData = [];
-            renderDrugTable();
-            updateDrugStats();
-            showNotification(`ไม่พบ sheet "${googleSheetsConfig.drugSheetName}" หรือเกิดข้อผิดพลาด: ${data.error.message}`, 'error');
-            return;
-        }
-
-        if (data.values && data.values.length > 1) {
-            // Skip header row and convert data format to match your sheet structure
-            drugListData = data.values.slice(1).map((row, index) => {
-                const drug = {
-                    drugCode: row[0] || '',
-                    drugName: row[1] || '',
-                    group: row[2] || '',
-                    had: row[3] == 1 || row[3] === 'High' || row[3] === 'HIGH' || row[3] === 'H' ? 'High' : 'Regular',
-                    // More flexible status checking - default to Active if empty or unclear
-                    status: (row[4] === '' || row[4] === null || row[4] === undefined ||
-                        row[4] == 1 || row[4] === 'Active' || row[4] === 'ACTIVE' ||
-                        row[4] === 'A' || row[4] === 'YES' || row[4] === 'Y' ||
-                        row[4] === true || row[4] === 'TRUE') ? 'Active' : 'Inactive',
-                    unit: row[5] || '',
-                    strength: row[6] || '',
-                    dosageForm: row[7] || '',
-                    tmtCode: row[8] || '',
-                    unitPrice: row[9] || 0
-                };
-
-                // Debug log first few drugs
-                if (index < 3) {
-                    console.log(`Drug ${index + 1}:`, drug, 'Raw row:', row);
-                }
-
-                return drug;
-            });
-
-            console.log(`Loaded ${drugListData.length} drugs from API`);
-            console.log('Sample drugs:', drugListData.slice(0, 3));
-
-            // Count active drugs for debugging
-            const activeDrugs = drugListData.filter(drug => drug.status === 'Active');
-            console.log(`Active drugs found: ${activeDrugs.length}`);
-            console.log('Active drugs sample:', activeDrugs.slice(0, 3));
-
-            // If no active drugs found, mark first 10 as active for demo
-            if (activeDrugs.length === 0 && drugListData.length > 0) {
-                console.log('No active drugs found, marking first 10 as Active for demo');
-                drugListData.slice(0, 10).forEach(drug => {
-                    drug.status = 'Active';
-                });
-                const newActiveDrugs = drugListData.filter(drug => drug.status === 'Active');
-                console.log(`Updated: ${newActiveDrugs.length} drugs marked as Active`);
-            }
-        } else {
-            drugListData = [];
-            console.log('No drug data found in sheet');
-        }
-
-        // ทำความสะอาดและอัปเดต globalDrugList
-        globalDrugList = cleanDrugData(drugListData);
-
-        renderDrugTable();
-        updateDrugStats();
-        setupSearchableDropdowns();
-
-        // แสดงรายการ HAD จากฐานข้อมูล
-        displayHADListFromDatabase(globalDrugList);
-
-        showNotification(`โหลดรายการยาเรียบร้อย (ผ่าน API) - ${drugListData.length} รายการ`, 'success');
-
-    } catch (error) {
-        console.error('Error loading drug list from API:', error);
-        showNotification('เกิดข้อผิดพลาดในการโหลดรายการยาจาก API: ' + error.message, 'error');
-
-        // Create sample drug data as fallback
-        createSampleDrugData();
+async function fetchDrugsFromWebApp() {
+    const response = await fetch(googleSheetsConfig.webAppUrl + '?action=getDrugs', { redirect: 'follow' });
+    const result = await response.json();
+    if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
+        throw new Error(result.error || 'ไม่มีข้อมูลยาใน Google Sheets');
     }
+    return result.data.map(normalizeWebAppDrug);
 }
 
-// Create sample drug data when API fails
-function createSampleDrugData() {
-    console.log('Creating sample drug data...');
-    drugListData = [
-        { drugCode: 'PARA500', drugName: 'Paracetamol 500mg', group: 'Analgesic', had: 'Regular', status: 'Active' },
-        { drugCode: 'AMOX250', drugName: 'Amoxicillin 250mg', group: 'Antibiotic', had: 'Regular', status: 'Active' },
-        { drugCode: 'METRO400', drugName: 'Metronidazole 400mg', group: 'Antibiotic', had: 'Regular', status: 'Active' },
-        { drugCode: 'PRED5', drugName: 'Prednisolone 5mg', group: 'Steroid', had: 'High', status: 'Active' },
-        { drugCode: 'DEXA4', drugName: 'Dexamethasone 4mg', group: 'Steroid', had: 'High', status: 'Active' },
-        { drugCode: 'INSU100', drugName: 'Insulin 100IU/ml', group: 'Hormone', had: 'High', status: 'Active' },
-        { drugCode: 'MORPH10', drugName: 'Morphine 10mg', group: 'Narcotic', had: 'High', status: 'Active' },
-        { drugCode: 'METRO200', drugName: 'Metronidazole 200mg', group: 'Antibiotic', had: 'Regular', status: 'Inactive' }
-    ];
+// ไฟล์สำรองที่ deploy มากับเว็บ (ถูก cache ใน Service Worker → ใช้งานออฟไลน์ได้)
+async function fetchDrugsFromLocalFile() {
+    const response = await fetch('drug_list.json');
+    if (!response.ok) throw new Error(`drug_list.json HTTP ${response.status}`);
+    const drugs = await response.json();
+    if (!Array.isArray(drugs) || drugs.length === 0) throw new Error('drug_list.json ว่างเปล่า');
+    return drugs;
+}
 
-    console.log('Sample drug data created:', drugListData.length, 'items');
-
-    // ทำความสะอาดและอัปเดต globalDrugList
-    globalDrugList = cleanDrugData(drugListData);
-
+function applyLoadedDrugs(drugs) {
+    drugListData = drugs;
+    globalDrugList = cleanDrugData(drugs);
+    drugListLoaded = true;
+    hideDrugLoadError();
     renderDrugTable();
     updateDrugStats();
     setupSearchableDropdowns();
-
-    // แสดงรายการ HAD จากข้อมูลตัวอย่าง
     displayHADListFromDatabase(globalDrugList);
+}
 
-    showNotification('ใช้ข้อมูลตัวอย่าง - กรุณาตั้งค่า API หรือ Apps Script ให้ถูกต้อง', 'info');
+/**
+ * โหลดรายการยา: Google Sheets (ผ่าน Web App) → drug_list.json
+ * ถ้าโหลดไม่ได้ทั้งคู่ จะแสดง error พร้อมปุ่มลองใหม่ — ไม่ใช้ข้อมูลยาตัวอย่าง
+ * เพราะผู้ใช้อาจเลือกยาที่ไม่มีอยู่จริงไปบันทึกรายงาน
+ * @param {{force?: boolean}} [options] force = โหลดใหม่แม้โหลดแล้ว
+ */
+function loadDrugList({ force = false } = {}) {
+    if (drugListLoadPromise) return drugListLoadPromise;
+    if (drugListLoaded && !force) return Promise.resolve(drugListData);
+
+    drugListLoadPromise = (async () => {
+        const errors = [];
+        if (googleSheetsConfig.webAppUrl) {
+            try {
+                applyLoadedDrugs(await fetchDrugsFromWebApp());
+                return drugListData;
+            } catch (error) {
+                errors.push(error.message);
+                console.warn('Load drugs from Web App failed:', error);
+            }
+        }
+        try {
+            applyLoadedDrugs(await fetchDrugsFromLocalFile());
+            showNotification(`ใช้รายการยาจากไฟล์สำรอง (${globalDrugList.length} รายการ) — อาจไม่เป็นปัจจุบัน`, 'warning');
+            return drugListData;
+        } catch (error) {
+            errors.push(error.message);
+            console.error('Load drugs from drug_list.json failed:', error);
+        }
+        showDrugLoadError(errors);
+        return [];
+    })().finally(() => { drugListLoadPromise = null; });
+
+    return drugListLoadPromise;
+}
+
+function showDrugLoadError(errors = []) {
+    const message = 'ไม่สามารถโหลดรายการยาได้ — การค้นหาและตรวจสอบยา HAD จะใช้ไม่ได้จนกว่าจะโหลดสำเร็จ';
+    showNotification(message, 'error');
+
+    const tbody = document.getElementById('drugTableBody');
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center">${escapeHtml(message)}</td></tr>`;
+    }
+
+    const host = document.getElementById('errorForm') || document.getElementById('druglist');
+    if (!host || document.getElementById('drugLoadError')) return;
+    const banner = document.createElement('div');
+    banner.id = 'drugLoadError';
+    banner.className = 'load-error-banner';
+    banner.setAttribute('role', 'alert');
+    banner.innerHTML = `
+        <span><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> ${escapeHtml(message)}</span>
+        <button type="button" class="btn btn-secondary btn-sm"><i class="fas fa-redo" aria-hidden="true"></i> ลองใหม่</button>`;
+    if (errors.length) banner.title = errors.join('\n');
+    banner.querySelector('button').addEventListener('click', () => loadDrugList({ force: true }));
+    host.prepend(banner);
+}
+
+function hideDrugLoadError() {
+    const banner = document.getElementById('drugLoadError');
+    if (banner) banner.remove();
 }
 
 // ฟังก์ชันแสดงรายการ HAD จากฐานข้อมูล
@@ -248,8 +125,8 @@ function displayHADListFromDatabase(drugList) {
         return;
     }
 
-    console.log(`🎯 พบ High Alert Drugs จำนวน: ${hadDrugs.length} รายการ`);
-    console.log('');
+    debugLog(`🎯 พบ High Alert Drugs จำนวน: ${hadDrugs.length} รายการ`);
+    debugLog('');
 
     // จัดกลุ่มตาม group
     const groupedHAD = {};
@@ -262,18 +139,18 @@ function displayHADListFromDatabase(drugList) {
 
     // แสดงรายการแยกตามกลุ่ม
     Object.keys(groupedHAD).forEach(group => {
-        console.log(`📂 กลุ่ม: ${group} (${groupedHAD[group].length} รายการ)`);
+        debugLog(`📂 กลุ่ม: ${group} (${groupedHAD[group].length} รายการ)`);
         groupedHAD[group].forEach((drug, index) => {
-            console.log(`   ${index + 1}. ${drug.drugCode} - ${drug.drugName}`);
+            debugLog(`   ${index + 1}. ${drug.drugCode} - ${drug.drugName}`);
         });
-        console.log('');
+        debugLog('');
     });
 
     // แสดงสรุป
-    console.log('📊 สรุปรายการ HAD:');
-    console.log(`   - รวมทั้งหมด: ${hadDrugs.length} รายการ`);
-    console.log(`   - แยกเป็น: ${Object.keys(groupedHAD).length} กลุ่ม`);
-    console.log(`   - กลุ่มยา: ${Object.keys(groupedHAD).join(', ')}`);
+    debugLog('📊 สรุปรายการ HAD:');
+    debugLog(`   - รวมทั้งหมด: ${hadDrugs.length} รายการ`);
+    debugLog(`   - แยกเป็น: ${Object.keys(groupedHAD).length} กลุ่ม`);
+    debugLog(`   - กลุ่มยา: ${Object.keys(groupedHAD).join(', ')}`);
 
     // แสดงการแจ้งเตือน
     showNotification(`🚨 พบ High Alert Drugs: ${hadDrugs.length} รายการ แยกเป็น ${Object.keys(groupedHAD).length} กลุ่ม`, 'warning');
@@ -318,14 +195,14 @@ function cleanDrugData(drugList) {
 
 // ฟังก์ชันแสดงรายการ HAD สำหรับเรียกจากปุ่ม
 function showHADList() {
-    console.log('🚨 === แสดงรายการ High Alert Drugs ===');
+    debugLog('🚨 === แสดงรายการ High Alert Drugs ===');
 
     // ใช้ข้อมูลจาก globalDrugList หรือ drugListData
     const drugList = globalDrugList.length > 0 ? globalDrugList :
         (window.drugListData && window.drugListData.length > 0 ? window.drugListData : []);
 
     if (drugList.length === 0) {
-        console.log('❌ ไม่มีข้อมูลยาในระบบ - กรุณาโหลดข้อมูลยาก่อน');
+        debugLog('❌ ไม่มีข้อมูลยาในระบบ - กรุณาโหลดข้อมูลยาก่อน');
         showNotification('ไม่มีข้อมูลยาในระบบ กรุณาโหลดรายการยาก่อน', 'warning');
         return;
     }
@@ -333,12 +210,6 @@ function showHADList() {
     displayHADListFromDatabase(drugList);
 }
 
-// Form submission fallback for loading drug list
-async function loadDrugListViaForm() {
-    // This approach is unreliable and has security concerns with popups
-    // Return false to fall through to API method
-    return false;
-}
 
 function renderDrugTable() {
     const tbody = document.getElementById('drugTableBody');
@@ -665,7 +536,7 @@ async function handleDrugFormSubmit(event) {
     try {
         if (!googleSheetsConfig.webAppUrl) {
             // Demo Mode: จำลองการเพิ่มยาใหม่
-            console.log('Demo Mode: เพิ่มยาใหม่', drugData);
+            debugLog('Demo Mode: เพิ่มยาใหม่', drugData);
 
             // Check for duplicate in demo data
             if (globalDrugList.some(drug => drug.drugCode === drugData.drugCode)) {

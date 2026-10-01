@@ -203,7 +203,7 @@ function renderUserManagement() {
         ${resetsHtml}
         <div class="user-tabs" role="group" aria-label="กรองผู้ใช้">${tabs}</div>
         <div class="data-table-container">
-            <table class="data-table">
+            <table class="data-table responsive-cards">
                 <thead><tr><th>PS Code</th><th>ชื่อ</th><th>กลุ่ม</th><th>ระดับ</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>

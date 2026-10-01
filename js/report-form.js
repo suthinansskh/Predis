@@ -1,6 +1,43 @@
 // ฟอร์มบันทึก error: กระบวนการ, Report ID, ส่งข้อมูล, ค้นหายา, ตรวจ HAD
 // โหลดเป็น classic script ตามลำดับใน JS_FILES (ดู sw.js / *.html)
 
+// Initialize form with current date and generate report ID
+function initializeForm() {
+    const now = new Date();
+    const pad = n => n.toString().padStart(2, '0');
+    const localDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const tsEl = document.getElementById('timestamp');
+    const eventDateEl = document.getElementById('eventDate');
+    if (tsEl) tsEl.value = localDateTime;
+    if (eventDateEl) eventDateEl.value = localDate;
+
+    // Generate Report ID
+    generateReportId();
+
+    // Populate process dropdown and setup error options
+    populateProcessSelect();
+
+    // Load drug list for drug dropdowns
+    loadDrugList();
+
+    // Add search functionality to drug input fields
+    setupDrugSearchInputs();
+
+    // Set reporter name
+    const reporterEl = document.getElementById('reporter');
+    if (reporterEl && currentUser) {
+        const reporterValue = `${currentUser.name} (${currentUser.psCode}) - ${currentUser.group}/${currentUser.level}`;
+        reporterEl.value = reporterValue;
+    } else if (reporterEl) {
+        reporterEl.value = 'รอโหลดชื่อผู้ใช้งาน...';
+    }
+
+    // เติมค่าที่ใช้บ่อย + กู้ร่างที่ยังไม่บันทึก
+    restoreReportFormState();
+}
+
 // รายการกระบวนการ (สามารถปรับแก้หรือเพิ่มได้ง่าย)
 const PROCESS_OPTIONS = [
     'จัดยา',
@@ -71,12 +108,8 @@ function updateErrorOptions(selectedProcess) {
 }
 
 // Global variable to track used report IDs
-let usedReportIds = new Set();
 // Submission control
 let isSubmitting = false;
-// Pagination state
-let currentTablePage = 1;
-let cachedValidRows = [];
 // Generate idempotency submission token
 function generateSubmissionToken() {
     return 'SUB-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 10);
@@ -117,7 +150,7 @@ function generateReportId() {
         reportIdEl.value = reportId;
     }
 
-    console.log('Generated unique Report ID:', reportId);
+    debugLog('Generated unique Report ID:', reportId);
     return reportId;
 }
 
@@ -166,14 +199,12 @@ async function appendToGoogleSheet(data) {
                 newReportId: data.reportId
             };
         }
-        throw new Error(`ไม่สามารถบันทึกข้อมูลได้: ${error.message}`, { cause: error });
+        const wrapped = new Error(`ไม่สามารถบันทึกข้อมูลได้: ${error.message}`, { cause: error });
+        wrapped.network = Boolean(error.network);
+        throw wrapped;
     }
 }
 
-async function readFromGoogleSheet() {
-    const result = await apiPost('getErrors');
-    return result.data || [];
-}
 
 // Populate drug dropdowns for correct and incorrect items
 function populateDrugDropdowns() {
@@ -181,7 +212,7 @@ function populateDrugDropdowns() {
     const incorrectItemList = document.getElementById('incorrectItemList');
     if (!correctItemList || !incorrectItemList) return;
 
-    console.log('populateDrugDropdowns called with drugListData:', drugListData?.length || 0, 'items');
+    debugLog('populateDrugDropdowns called with drugListData:', drugListData?.length || 0, 'items');
 
     // Clear existing options
     correctItemList.innerHTML = '';
@@ -190,11 +221,11 @@ function populateDrugDropdowns() {
     if (drugListData && drugListData.length > 0) {
         // Filter only active drugs (hide inactive ones)
         const activeDrugs = drugListData.filter(drug => drug.status === 'Active');
-        console.log(`Showing only active drugs: ${activeDrugs.length} out of ${drugListData.length} total drugs`);
+        debugLog(`Showing only active drugs: ${activeDrugs.length} out of ${drugListData.length} total drugs`);
 
         // Count for information
         const inactiveDrugs = drugListData.filter(drug => drug.status === 'Inactive');
-        console.log(`Status breakdown: Active: ${activeDrugs.length}, Inactive (hidden): ${inactiveDrugs.length}`);
+        debugLog(`Status breakdown: Active: ${activeDrugs.length}, Inactive (hidden): ${inactiveDrugs.length}`);
 
         activeDrugs.forEach(drug => {
             // No status indicator needed since all are active
@@ -202,7 +233,7 @@ function populateDrugDropdowns() {
                 `${drug.drugName} (${drug.drugCode})` :
                 drug.drugCode;
 
-            console.log('Adding drug to datalist:', displayText);
+            debugLog('Adding drug to datalist:', displayText);
 
             // Add to correct item datalist
             const correctOption = document.createElement('option');
@@ -215,7 +246,7 @@ function populateDrugDropdowns() {
             incorrectItemList.appendChild(incorrectOption);
         });
 
-        console.log(`Populated drug datalists with ${activeDrugs.length} active drugs only`);
+        debugLog(`Populated drug datalists with ${activeDrugs.length} active drugs only`);
     } else {
         console.warn('No drug list data available');
     }
@@ -321,24 +352,8 @@ function highlightMultipleMatches(text, query) {
 }
 
 // Escape HTML to prevent XSS
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const str = String(text);
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
 
 // Sanitize input to prevent formula injection in Google Sheets
-function sanitizeForSheet(value) {
-    if (value === null || value === undefined) return '';
-    let str = String(value).trim();
-    // Remove characters that could trigger formula injection
-    if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
-        str = "'" + str;
-    }
-    // Remove null bytes
-    str = str.replace(/\0/g, '');
-    return str;
-}
 
 // --- Searchable dropdown enhancement (replaces plain datalist UX) ---
 function setupSearchableDropdowns() {
@@ -758,7 +773,25 @@ async function handleFormSubmit(event) {
         submitBtn.innerHTML = '<div class="loading"></div> กำลังบันทึก...';
         submitBtn.disabled = true;
 
-        const result = await appendToGoogleSheet(errorData);
+        let result;
+        try {
+            if (!navigator.onLine) {
+                const offline = new Error('offline');
+                offline.network = true;
+                throw offline;
+            }
+            result = await appendToGoogleSheet(errorData);
+        } catch (error) {
+            if (!error.network) throw error;
+            // ออฟไลน์/เน็ตหลุด → เก็บไว้ในเครื่องแล้วส่งอัตโนมัติ (ไม่ให้ผู้ใช้ต้องกรอกใหม่)
+            queueReport(buildErrorPayload(errorData));
+            saveReportPrefs(errorData);
+            clearReportDraft();
+            showNotification(`ไม่มีสัญญาณ — บันทึกไว้ในเครื่องแล้ว จะส่งอัตโนมัติเมื่อออนไลน์\n📝 Report ID: ${errorData.reportId}`, 'warning');
+            event.target.reset();
+            initializeForm();
+            return;
+        }
 
         // แสดงการแจ้งเตือนพร้อม Report ID ที่ใช้
         let successMessage = 'บันทึกข้อผิดพลาดเรียบร้อยแล้ว!';
@@ -769,6 +802,8 @@ async function handleFormSubmit(event) {
         }
 
         showNotification(successMessage, 'success');
+        saveReportPrefs(errorData);
+        clearReportDraft();
         event.target.reset();
         initializeForm();
 
@@ -781,6 +816,107 @@ async function handleFormSubmit(event) {
         submitBtn.innerHTML = '<i class="fas fa-save"></i> บันทึก';
         submitBtn.disabled = false;
         isSubmitting = false;
+    }
+}
+
+// ===== จำค่าที่ใช้บ่อย + ร่างอัตโนมัติ =====
+
+const REPORT_PREFS_KEY = 'predisReportPrefs';
+const REPORT_DRAFT_PREFIX = 'predisReportDraft:';
+const DRAFT_FIELDS = ['eventDate', 'shift', 'errorType', 'location', 'substation', 'process', 'errorDetail',
+    'correctItem', 'incorrectItem', 'cause', 'additionalDetails'];
+const PREF_FIELDS = ['shift', 'location', 'substation'];
+let draftSaveTimer = null;
+
+function reportDraftKey() {
+    return REPORT_DRAFT_PREFIX + (currentUser ? currentUser.psCode : '');
+}
+
+function readJsonStorage(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
+}
+
+function saveReportPrefs(data) {
+    const prefs = {};
+    PREF_FIELDS.forEach(f => { if (data[f]) prefs[f] = data[f]; });
+    try { localStorage.setItem(REPORT_PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* storage full/blocked */ }
+}
+
+function clearReportDraft() {
+    clearTimeout(draftSaveTimer);
+    try { localStorage.removeItem(reportDraftKey()); } catch (_) { /* ignore */ }
+    const banner = document.getElementById('draftBanner');
+    if (banner) banner.remove();
+}
+
+
+function setFieldValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el || value === undefined || value === null || value === '') return;
+    el.value = value;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function applyFormValues(values) {
+    // process ต้องมาก่อน errorDetail (ตัวเลือกของ errorDetail ขึ้นกับ process)
+    ['process', 'location'].forEach(id => setFieldValue(id, values[id]));
+    Object.entries(values).forEach(([id, value]) => {
+        if (id !== 'process' && id !== 'location') setFieldValue(id, value);
+    });
+}
+
+function saveReportDraftSoon() {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(() => {
+        const draft = {};
+        DRAFT_FIELDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.value) draft[id] = el.value;
+        });
+        // ร่างที่มีแค่ค่าเริ่มต้น (วันที่ + ค่าที่จำไว้) ไม่ต้องเก็บ
+        const meaningful = Object.keys(draft).some(k => !['eventDate', ...PREF_FIELDS].includes(k));
+        try {
+            if (meaningful) localStorage.setItem(reportDraftKey(), JSON.stringify({ savedAt: Date.now(), values: draft }));
+        } catch (_) { /* ignore */ }
+    }, 800);
+}
+
+function showDraftBanner(savedAt) {
+    const form = document.getElementById('errorForm');
+    if (!form || document.getElementById('draftBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'draftBanner';
+    banner.className = 'draft-banner';
+    banner.setAttribute('role', 'status');
+    banner.innerHTML = `
+        <span><i class="fas fa-history" aria-hidden="true"></i> กู้คืนร่างที่ยังไม่ได้บันทึก (${escapeHtml(new Date(savedAt).toLocaleString('th-TH'))})</span>
+        <button type="button" class="btn btn-secondary btn-sm">ล้างร่าง</button>`;
+    banner.querySelector('button').addEventListener('click', () => {
+        clearReportDraft();
+        form.reset();
+        initializeForm();
+    });
+    form.prepend(banner);
+}
+
+// เรียกจาก initializeForm (หน้า report): เติมค่าที่จำไว้ แล้วกู้ร่างถ้ามี
+function restoreReportFormState() {
+    const form = document.getElementById('errorForm');
+    if (!form) return;
+
+    const prefs = readJsonStorage(REPORT_PREFS_KEY);
+    if (prefs) applyFormValues(prefs);
+
+    const draft = readJsonStorage(reportDraftKey());
+    if (draft && draft.values) {
+        applyFormValues(draft.values);
+        showDraftBanner(draft.savedAt);
+    }
+
+    if (!form.dataset.draftListener) {
+        form.dataset.draftListener = 'true';
+        form.addEventListener('input', saveReportDraftSoon);
+        form.addEventListener('change', saveReportDraftSoon);
     }
 }
 
@@ -821,15 +957,15 @@ async function checkAndRecordHAD(errorData) {
         // แสดงการแจ้งเตือนถ้าพบ HAD
         if (hadInfo.isHAD) {
             showNotification(`⚠️ ตรวจพบ High Alert Drugs: ${hadInfo.hadDrugs.join(', ')}`, 'warning');
-            console.log('HAD Detected:', hadInfo);
+            debugLog('HAD Detected:', hadInfo);
         }
 
         return hadInfo;
 
     } catch (error) {
         console.error('Error checking HAD:', error);
-        console.log('GlobalDrugList sample:', globalDrugList.slice(0, 3));
-        console.log('GlobalDrugList length:', globalDrugList.length);
+        debugLog('GlobalDrugList sample:', globalDrugList.slice(0, 3));
+        debugLog('GlobalDrugList length:', globalDrugList.length);
         return null;
     }
 }

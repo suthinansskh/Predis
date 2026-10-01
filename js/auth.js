@@ -95,7 +95,8 @@ function updateDashboardUserInfo() {
 
     // Set default filter to show current user's reports
     const filterUser = document.getElementById('filterUser');
-    if (filterUser && currentUser) {
+    if (filterUser && currentUser && !filterUser.dataset.defaultApplied) {
+        filterUser.dataset.defaultApplied = 'true';
         // Set default to current user for regular users, all for admins
         if (currentUser.level === 'admin' || currentUser.level === 'supervisor') {
             filterUser.value = '';  // Show all for admin/supervisor
@@ -161,9 +162,19 @@ async function authenticateUser(userCode, password) {
 
 function logout() {
     const token = getSessionToken();
+    const pendingReports = typeof myOutboxItems === 'function' ? myOutboxItems().length : 0;
+
+    // เครื่องในห้องยาใช้ร่วมกัน: ลบร่างรายงานที่ยังไม่บันทึกของทุกคน
+    try {
+        Object.keys(localStorage).filter(k => k.startsWith('predisReportDraft:')).forEach(k => localStorage.removeItem(k));
+    } catch (_) { /* storage blocked */ }
+
     clearSession();
     showLoginPage();
-    showNotification('ออกจากระบบเรียบร้อย', 'info');
+    if (typeof updateOutboxBadge === 'function') updateOutboxBadge();
+    showNotification(pendingReports > 0
+        ? `ออกจากระบบแล้ว — มีรายงานรอส่ง ${pendingReports} รายการ จะส่งเมื่อคุณเข้าสู่ระบบอีกครั้ง`
+        : 'ออกจากระบบเรียบร้อย', pendingReports > 0 ? 'warning' : 'info');
     if (token) {
         // แจ้ง server ให้ยกเลิก token (ไม่ต้องรอผล)
         const formData = new FormData();

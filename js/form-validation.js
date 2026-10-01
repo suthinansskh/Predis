@@ -12,7 +12,7 @@ function setCurrentDate() {
         const currentDate = `${year}-${month}-${day}`;
 
         eventDateInput.value = currentDate;
-        console.log('Set current date:', currentDate);
+        debugLog('Set current date:', currentDate);
     }
 }
 
