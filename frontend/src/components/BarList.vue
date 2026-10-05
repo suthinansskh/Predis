@@ -20,7 +20,7 @@ defineProps({
                     <span class="bar-label" :title="e.label">{{ e.label }}</span>
                     <span>{{ e.count }} <small>({{ percent(e.count, total).toFixed(0) }}%)</small></span>
                 </div>
-                <div class="bar-track"><div class="bar-fill" :class="tone" :style="{ width: Math.max(percent(e.count, total), 2) + '%' }"></div></div>
+                <div class="bar-track"><div class="bar-fill" :class="tone" :style="{ width: Math.min(100, Math.max(percent(e.count, total), 2)) + '%' }"></div></div>
             </li>
         </ul>
     </div>
