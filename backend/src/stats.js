@@ -118,7 +118,7 @@ function getReportStats(session, p) {
     from: p.from || '', to: p.to || '', process: p.process || '', patientType: p.patientType || '',
     location: p.location || '', hadOnly: isTrue(p.hadOnly), mine: isTrue(p.mine)
   };
-  var cacheKey = 'stats:' + getMeta('reportsVersion') + ':' + (fullAccess ? 'full' : 'user') + ':' +
+  var cacheKey = 'stats:' + reportsDataKey() + ':' + (fullAccess ? 'full' : 'user') + ':' +
     (filter.mine ? session.psCode : '') + ':' + sha256Hex(JSON.stringify(filter)).slice(0, 16);
   var cache = CacheService.getScriptCache();
   var cached = cache.get(cacheKey);

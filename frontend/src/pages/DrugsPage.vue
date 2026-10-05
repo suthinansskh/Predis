@@ -15,7 +15,11 @@ const editing = ref(null); // {drugCode, drugName, had, status}
 const adding = ref(null);
 const busy = ref(false);
 
-onMounted(() => loadDrugs(api));
+// หน้านี้ใช้แก้ HAD/สถานะ → ต้องเป็นรายการเต็มจาก server (ไม่ใช่ drug_list.json ที่มากับเว็บ)
+onMounted(async () => {
+    await loadDrugs(api);
+    if (drugStore.source !== 'server') await loadDrugs(api, { force: true });
+});
 
 const filtered = computed(() => {
     let list = drugStore.drugs;
@@ -79,7 +83,7 @@ function exportCsv() {
                 <h1>รายการยา</h1>
                 <p class="muted">
                     {{ drugStore.drugs.length }} รายการ · HAD {{ hadCount }} รายการ
-                    <template v-if="drugStore.source && drugStore.source !== 'server'"> · ข้อมูลในเครื่อง (อาจไม่เป็นปัจจุบัน)</template>
+                    <template v-if="drugStore.offline"> · ข้อมูลในเครื่อง (อาจไม่เป็นปัจจุบัน)</template>
                 </p>
             </div>
             <div class="actions">

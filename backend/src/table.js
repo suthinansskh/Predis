@@ -99,7 +99,7 @@ function Table(name) {
   };
 }
 
-// ===== Meta (key/value) =====
+// ===== Meta (key/value) — ใช้โดยเครื่องมือ/ทดสอบ; แอปใช้ Script Properties (cache.js) =====
 
 function getMeta(key) {
   var row = Table(META_SHEET).findBy('key', key);

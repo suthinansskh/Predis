@@ -137,7 +137,13 @@ test('รหัสเปิดใช้งาน: หมดอายุหลั
     assert.equal(env.v2('auth.activate', { userCode: 'S01', code: second.code, newPassword: 'MyNewPass#1' }).error.code, 'ACTIVATION_INVALID', 'หมดอายุ');
 });
 
-test('reports.create: เติมรหัสยา/HAD ฝั่ง server, เขียน Sheet เดิมเสมอ และ Reports เมื่อ migrate แล้ว', () => {
+// เพิ่มรายงานแบบเดิม (13 คอลัมน์) ลง Sheet Reports ผ่านตัวแปลงเดียวกับ tools/migrate-reports.js
+function seedLegacy(env, rows) {
+    const index = env.gs.currentDrugIndex();
+    env.gs.Table('Reports').appendMany(rows.map(row => env.gs.reportFromLegacyRow(row, index, env.gs.formatBangkokDate)));
+}
+
+test('reports.create: เติมรหัสยา/HAD ฝั่ง server, เขียน Reports + Sheet เดิม', () => {
     const { env, tokenOf } = setup();
     const token = tokenOf('U01', 'UserPass#11');
 
@@ -158,25 +164,24 @@ test('reports.create: เติมรหัสยา/HAD ฝั่ง server, �
     assert.equal(legacy[1][7], 'Paracetamol 500 mg (PARA500)');
     assert.equal(legacy[1][8], 'Morphine 10 mg (MORPH10)');
     assert.equal(legacy[1][11], 'ชื่อ U01 (U01) - เภสัชกร/user');
-    assert.equal(env.sheets.Reports, undefined, 'ยังไม่ migrate → ยังไม่เขียน Reports');
 
-    env.gs.setMeta('reportsMigrated', 'true');
     env.v2('reports.create', { ...REPORT, location: 'รพ.สต.', substation: 'รพ.สต.แทง' }, token);
     const reports = env.gs.Table('Reports').all();
-    assert.equal(reports.length, 1);
+    assert.equal(reports.length, 2);
     assert.equal(reports[0].incorrectDrugCode, 'MORPH10');
-    assert.equal(reports[0].substation, 'รพ.สต.แทง');
+    assert.equal(reports[1].substation, 'รพ.สต.แทง');
     assert.equal(env.sheets.Predispensing_Errors.rows[2][4], 'รพ.สต.แทง', 'Sheet เดิมเก็บแบบเดิม');
 });
 
 
-test('reports.list: กรอง/แบ่งหน้า/redaction ตาม role (อ่านจาก Sheet เดิมก่อน migrate)', () => {
+test('reports.list: กรอง/แบ่งหน้า/redaction ตาม role', () => {
     const { env, tokenOf } = setup();
-    const legacy = env.sheets.Predispensing_Errors;
+    const legacy = [];
     for (let i = 1; i <= 5; i++) {
-        legacy.appendRow([`2026-09-0${i}`, `R${i}`, 'เช้า', 'ผู้ป่วยนอก', 'OPD', i % 2 ? 'จัดยา' : 'คีย์ยา', 'e', 'BCG vaccine (010)', '',
+        legacy.push([`2026-09-0${i}`, `R${i}`, 'เช้า', 'ผู้ป่วยนอก', 'OPD', i % 2 ? 'จัดยา' : 'คีย์ยา', 'e', 'BCG vaccine (010)', '',
             'c', `ลับ ${i}`, i === 1 ? 'ชื่อ U01 (U01) - เภสัชกร/user' : 'ชื่อ P01 (P01) - เภสัชกร/pharmacist', 't']);
     }
+    seedLegacy(env, legacy);
     const user = tokenOf('U01', 'UserPass#11');
     const page1 = env.v2('reports.list', { pageSize: 2 }, user).data;
     assert.equal(page1.total, 5);
@@ -278,12 +283,48 @@ test('resolveDrug: หารหัสในวงเล็บได้แม้�
 
 test('reports.list q: ค้นหาข้อความ แต่ไม่ค้นในข้อมูลที่ role มองไม่เห็น', () => {
     const { env, tokenOf } = setup();
-    const legacy = env.sheets.Predispensing_Errors;
-    legacy.appendRow(['2026-09-01', 'R1', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดชนิด', 'BCG vaccine (010)', '', 'c', 'ลับเฉพาะ', 'ชื่อ P01 (P01) - เภสัชกร/pharmacist', 't']);
-    legacy.appendRow(['2026-09-02', 'R2', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดขนาด', 'Morphine 10 mg (MORPH10)', '', 'c', '', 'ชื่อ U01 (U01) - เภสัชกร/user', 't']);
+    seedLegacy(env, [['2026-09-01', 'R1', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดชนิด', 'BCG vaccine (010)', '', 'c', 'ลับเฉพาะ', 'ชื่อ P01 (P01) - เภสัชกร/pharmacist', 't'],
+        ['2026-09-02', 'R2', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดขนาด', 'Morphine 10 mg (MORPH10)', '', 'c', '', 'ชื่อ U01 (U01) - เภสัชกร/user', 't']]);
     const user = tokenOf('U01', 'UserPass#11');
     assert.deepEqual(plain(env.v2('reports.list', { q: 'morphine' }, user).data.items.map(r => r.id)), ['R2']);
     assert.deepEqual(plain(env.v2('reports.list', { q: 'จัดผิด bcg' }, user).data.items.map(r => r.id)), ['R1']);
     assert.equal(env.v2('reports.list', { q: 'ลับเฉพาะ' }, user).data.total, 0, 'user ค้นในรายละเอียดของคนอื่นไม่ได้');
     assert.equal(env.v2('reports.list', { q: 'ลับเฉพาะ' }, tokenOf('P01', 'PharmPass#11')).data.total, 1);
+});
+
+test('cache รายงาน: อ่าน Sheet ครั้งเดียว, รายงานใหม่ต่อท้าย cache, แถวที่เขียนตรงลง Sheet ทำให้ cache หมดอายุ', () => {
+    const { env, tokenOf } = setup();
+    const token = tokenOf('P01', 'PharmPass#11');
+    env.v2('reports.create', REPORT, token);
+    assert.equal(env.v2('reports.list', {}, token).data.total, 1);
+    const cached = [...env.cache.keys()].filter(k => k.startsWith('reports:'));
+    assert.ok(cached.some(k => k.endsWith(':n')), 'เก็บแบบ chunk');
+
+    // แก้ค่าใน Sheet โดยจำนวนแถวไม่เปลี่ยน → ยังได้ค่าจาก cache (พิสูจน์ว่าไม่อ่าน Sheet)
+    const sheet = env.sheets.Reports;
+    const causeCol = sheet.rows[0].indexOf('cause');
+    sheet.rows[1][causeCol] = 'แก้ตรง';
+    assert.equal(env.v2('reports.list', {}, token).data.items[0].cause, 'ความเร่งรีบ');
+
+    // รายงานใหม่ผ่านแอป → ต่อท้าย cache เดิม (ค่าเก่ายังมาจาก cache)
+    env.v2('reports.create', { ...REPORT, cause: 'ใหม่' }, token);
+    const items = env.v2('reports.list', {}, token).data.items;
+    assert.deepEqual(plain(items.map(r => r.cause)).sort(), ['ความเร่งรีบ', 'ใหม่']);
+
+    // เขียนตรงลง Sheet (เช่น mcp-server) → จำนวนแถวเปลี่ยน → อ่านใหม่
+    seedLegacy(env, [['2026-09-01', 'R9', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'e', '', '', 'c', '', 'ชื่อ P01 (P01) - เภสัชกร/pharmacist', 't']]);
+    const fresh = env.v2('reports.list', {}, token).data;
+    assert.equal(fresh.total, 3);
+    assert.ok(fresh.items.some(r => r.cause === 'แก้ตรง'));
+    assert.equal(env.gs.getMeta('reportsVersion'), '', 'ไม่ใช้ Sheet Meta แล้ว');
+    assert.ok(env.props.get('reportsVersion'));
+});
+
+test('drugs.overrides: คืนเฉพาะค่าที่แก้ในแอป, cache ถูกล้างเมื่อแก้ยา', () => {
+    const { env, tokenOf } = setup();
+    assert.deepEqual(plain(env.get({ action: 'drugs.overrides' }).data.overrides), []);
+    const token = tokenOf('P01', 'PharmPass#11');
+    assert.equal(env.v2('drugs.update', { drugCode: '010', had: 'High' }, token).ok, true);
+    assert.deepEqual(plain(env.get({ action: 'drugs.overrides' }).data.overrides), [{ drugCode: '010', had: 'High', status: '' }]);
+    assert.equal(env.get({ action: 'drugs.list' }).data.drugs.find(d => d.drugCode === '010').had, 'High');
 });

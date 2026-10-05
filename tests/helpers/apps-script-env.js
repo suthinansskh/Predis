@@ -3,8 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 
 const toSigned = buf => Array.from(buf, b => (b > 127 ? b - 256 : b));
+const blobOf = buf => ({ _buf: buf, getBytes: () => toSigned(buf), getDataAsString: () => buf.toString('utf8') });
 
 class MockSheet {
     constructor(name, rows = []) {
@@ -89,9 +91,14 @@ function createEnv({ sheets = {}, now, fileOrder = 'sorted' } = {}) {
             base64DecodeWebSafe(text) {
                 return toSigned(Buffer.from(String(text).replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
             },
-            newBlob(bytes) {
-                return { getDataAsString: () => Buffer.from(bytes.map(b => b & 0xff)).toString('utf8') };
+            newBlob(data) {
+                const buf = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data.map(b => b & 0xff));
+                return blobOf(buf);
             },
+            gzip: blob => blobOf(zlib.gzipSync(blob._buf)),
+            ungzip: blob => blobOf(zlib.gunzipSync(blob._buf)),
+            base64Encode: data => (Array.isArray(data) ? Buffer.from(data.map(b => b & 0xff)) : Buffer.from(String(data), 'utf8')).toString('base64'),
+            base64Decode: text => toSigned(Buffer.from(String(text), 'base64')),
             // รองรับ pattern yyyy MM dd HH mm ss ตาม timezone ที่ระบุ (ใช้แค่ Asia/Bangkok = UTC+7)
             formatDate(d, tz, pattern) {
                 const t = new Date(d.getTime() + (tz === 'Asia/Bangkok' ? 7 * 3600e3 : 0));
@@ -106,7 +113,10 @@ function createEnv({ sheets = {}, now, fileOrder = 'sorted' } = {}) {
             getScriptCache: () => ({
                 get: k => (cache.has(k) ? cache.get(k) : null),
                 put: (k, v) => cache.set(k, String(v)),
-                remove: k => cache.delete(k)
+                remove: k => cache.delete(k),
+                getAll: keys => Object.fromEntries(keys.filter(k => cache.has(k)).map(k => [k, cache.get(k)])),
+                putAll: entries => Object.entries(entries).forEach(([k, v]) => cache.set(k, String(v))),
+                removeAll: keys => keys.forEach(k => cache.delete(k))
             })
         },
         PropertiesService: {

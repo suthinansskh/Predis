@@ -50,9 +50,8 @@ function buildV2Routes() {
   'auth.activate': { public: true, handler: function(p) { return v2Result(activateAccount(p)); } },
   'auth.register': { public: true, handler: function(p) { return v2FromLegacy(registerUser(p)); } },
   'auth.requestReset': { public: true, handler: function(p) { return v2FromLegacy(requestPasswordReset(p.userCode)); } },
-  'drugs.list': { public: true, handler: function() {
-    return v2Ok({ drugs: JSON.parse(getDrugList(SpreadsheetApp.openById(SPREADSHEET_ID)).getContent()).data || [] });
-  } },
+  'drugs.list': { public: true, handler: function() { return v2Ok({ drugs: cachedDrugList() }); } },
+  'drugs.overrides': { public: true, handler: function() { return v2Ok({ overrides: drugOverridesList() }); } },
 
   // ----- authenticated -----
   'auth.me': { handler: function(p, s) { return v2Ok(sessionSummary(s)); } },

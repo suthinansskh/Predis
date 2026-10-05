@@ -108,6 +108,7 @@ function updateDrug(session, data) {
     lock.releaseLock();
   }
 
+  invalidateDrugCaches();
   logAuditEvent('DRUG_UPDATED', session.psCode, data.drugCode + ' ' +
     [had !== null ? 'HAD=' + had : '', status !== null ? 'status=' + status : ''].join(' ').trim());
   return jsonResponse({ success: true, message: 'บันทึกการแก้ไขยา ' + data.drugCode + ' แล้ว' });
@@ -158,6 +159,7 @@ function handleDrugOperation(spreadsheet, data, session) {
         lock.releaseLock();
       }
 
+      invalidateDrugCaches();
       logAuditEvent('DRUG_ADDED', session.psCode, data.drugCode);
       return jsonResponse({ success: true, message: 'เพิ่มรายการยาเรียบร้อยแล้ว', timestamp: new Date().toISOString() });
     }
@@ -229,3 +231,45 @@ function getDrugList(spreadsheet) {
 }
 
 // ===== Users: helpers =====
+
+// ===== Cache รายการยา =====
+
+var DRUGS_CACHE_KEY = 'drugs:list';
+var DRUG_OVERRIDES_CACHE_KEY = 'drugs:overrides';
+var DRUGS_CACHE_SECONDS = 10 * 60; // sync จาก HOSxP เขียน Sheet ตรง → เห็นผลภายใน 10 นาที
+
+/** รายการยาทั้งหมด (รวม override) — cache 10 นาที, ล้างเมื่อแก้/เพิ่มยา */
+function cachedDrugList() {
+  var drugs = cacheGetLarge(DRUGS_CACHE_KEY);
+  if (!drugs) {
+    drugs = JSON.parse(getDrugList(SpreadsheetApp.openById(SPREADSHEET_ID)).getContent()).data || [];
+    cachePutLarge(DRUGS_CACHE_KEY, drugs, DRUGS_CACHE_SECONDS);
+  }
+  return drugs;
+}
+
+/** HAD/สถานะที่ห้องยาแก้ในแอป (เล็ก) — frontend ใช้คู่กับ drug_list.json บน GitHub Pages */
+function drugOverridesList() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(DRUG_OVERRIDES_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(DRUG_OVERRIDE_SHEET);
+  var list = !sheet ? [] : sheet.getDataRange().getValues().slice(1)
+    .filter(function(r) { return drugCodeKey(r[0]); })
+    .map(function(r) {
+      return {
+        drugCode: String(r[0]).trim().replace(/^'/, ''),
+        had: r[1] ? toHadLabel(r[1]) : '',
+        status: r[2] === '' ? '' : (toActive(r[2]) ? 'Active' : 'Inactive')
+      };
+    });
+  var json = JSON.stringify(list);
+  if (json.length < 90000) cache.put(DRUG_OVERRIDES_CACHE_KEY, json, DRUGS_CACHE_SECONDS);
+  return list;
+}
+
+function invalidateDrugCaches() {
+  cacheRemoveLarge(DRUGS_CACHE_KEY);
+  CacheService.getScriptCache().remove(DRUG_OVERRIDES_CACHE_KEY);
+}
+

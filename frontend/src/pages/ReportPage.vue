@@ -138,7 +138,7 @@ async function submit() {
             <p>{{ drugStore.error }}</p>
             <button class="btn small" type="button" @click="loadDrugs(api, { force: true })"><Icon name="refresh" :size="16" /> ลองใหม่</button>
         </div>
-        <div v-else-if="drugStore.source === 'bundled' || drugStore.source === 'cache'" class="callout info">
+        <div v-else-if="drugStore.offline" class="callout info">
             ใช้รายการยาที่เก็บไว้ในเครื่อง ({{ drugStore.drugs.length }} รายการ) — อาจไม่เป็นปัจจุบัน
         </div>
 

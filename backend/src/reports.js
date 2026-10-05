@@ -1,8 +1,7 @@
 // รายงาน v2 — Sheet "Reports" แบบมีโครงสร้าง (รหัสยา + HAD ต่อรายงาน)
 // Apps Script: ทุกไฟล์ใน backend/src แชร์ global scope เดียวกัน
 //
-// ช่วงเปลี่ยนผ่าน: เขียนลง Predispensing_Errors (ให้ frontend เดิมเห็น) และลง Reports เมื่อ migrate แล้ว
-// (Meta.reportsMigrated = 'true' — ตั้งโดย tools/migrate-reports.js)
+// อ่านจาก Reports (cache ใน CacheService), เขียนลง Reports + mirror ใน Predispensing_Errors
 
 // ===== Pure functions (ไม่เรียก service ของ Apps Script — ใช้ซ้ำใน tools/migrate-reports.js) =====
 
@@ -201,10 +200,7 @@ function publicReport(r) {
 var drugIndexMemo = null; // ต่อ execution
 
 function currentDrugIndex() {
-  if (!drugIndexMemo) {
-    var payload = JSON.parse(getDrugList(SpreadsheetApp.openById(SPREADSHEET_ID)).getContent());
-    drugIndexMemo = buildDrugIndex(payload.data || []);
-  }
+  if (!drugIndexMemo) drugIndexMemo = buildDrugIndex(cachedDrugList());
   return drugIndexMemo;
 }
 
@@ -212,23 +208,77 @@ function formatBangkokDate(date) {
   return Utilities.formatDate(date, 'Asia/Bangkok', 'yyyy-MM-dd');
 }
 
-function reportsMigrated() {
-  return getMeta('reportsMigrated') === 'true';
+var REPORTS_CACHE_SECONDS = 30 * 60;
+var reportsMemo = null; // ต่อ execution
+
+function reportsCacheKey(dataKey) {
+  return 'reports:' + dataKey;
 }
 
-function bumpReportsVersion() {
-  setMeta('reportsVersion', String(Date.now()));
+/** แปลงตารางเป็นรูปแบบกะทัดรัดสำหรับ cache: {h: header, r: [[...], ...]} */
+function packReports(header, reports) {
+  return { h: header, r: reports.map(function(o) { return header.map(function(c) { return o[c] === undefined ? '' : o[c]; }); }) };
 }
 
-/** รายงานทั้งหมดเป็น object (จาก Reports ถ้า migrate แล้ว ไม่งั้นแปลงจาก Sheet เดิม) */
+function unpackReports(packed) {
+  return packed.r.map(function(row) {
+    var o = {};
+    for (var i = 0; i < packed.h.length; i++) o[packed.h[i]] = row[i];
+    return o;
+  });
+}
+
+/**
+ * รายงานทั้งหมด (Sheet Reports) — อ่านจาก cache ถ้ามี (gzip ใน CacheService, key ตามเวอร์ชัน+จำนวนแถว)
+ * ไม่มี cache → อ่าน Sheet ครั้งเดียวแล้วเก็บ
+ */
 function readAllReports() {
-  if (reportsMigrated()) return Table(REPORTS_SHEET).all();
-  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(ERROR_SHEET);
-  if (!sheet || sheet.getLastRow() < 2) return [];
-  var index = currentDrugIndex();
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 13).getValues()
-    .filter(function(row) { return row[LEGACY_COLS.id]; })
-    .map(function(row) { return reportFromLegacyRow(row, index, formatBangkokDate); });
+  if (reportsMemo) return reportsMemo;
+  var sheet = reportsSheet();
+  var dataKey = reportsDataKey(sheet ? sheet.getLastRow() : 0);
+  var packed = cacheGetLarge(reportsCacheKey(dataKey));
+  if (!packed) {
+    var table = Table(REPORTS_SHEET);
+    var header = table.header.slice();
+    packed = packReports(header, table.all());
+    cachePutLarge(reportsCacheKey(dataKey), packed, REPORTS_CACHE_SECONDS);
+  }
+  reportsMemo = unpackReports(packed);
+  return reportsMemo;
+}
+
+/**
+ * เขียนรายงาน (Reports + mirror ใน Sheet เดิม) ภายใน lock พร้อมกัน id ซ้ำ
+ * แล้วต่อท้าย cache เดิม (ไม่ต้องอ่าน Sheet ใหม่ทั้งหมด)
+ * @returns {boolean} false ถ้า id ซ้ำ
+ */
+function writeReport(report) {
+  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var legacySheet = spreadsheet.getSheetByName(ERROR_SHEET);
+  var table = Table(REPORTS_SHEET);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var lastRow = table.sheet.getLastRow();
+    var idCol = table.header.indexOf('id') + 1;
+    var ids = lastRow > 1 ? table.sheet.getRange(2, idCol, lastRow - 1, 1).getValues() : [];
+    if (ids.some(function(r) { return String(r[0]) === report.id; })) return false;
+
+    var oldKey = reportsCacheKey(reportsDataKey(lastRow));
+    var cached = cacheGetLarge(oldKey);
+    table.append(report);
+    if (legacySheet) legacySheet.appendRow(legacyRowFromReport(report).map(sanitizeInput));
+
+    var newVersion = bumpReportsVersion();
+    if (cached && cached.h.join() === table.header.join()) {
+      cached.r.push(table.header.map(function(c) { return report[c] === undefined ? '' : report[c]; }));
+      cachePutLarge(reportsCacheKey(newVersion + '.' + (lastRow + 1)), cached, REPORTS_CACHE_SECONDS);
+    }
+    reportsMemo = null;
+  } finally {
+    lock.releaseLock();
+  }
+  return true;
 }
 
 /** {psCode, name, group, level} ของผู้ใช้จาก Sheet Users (fallback = session) */
@@ -247,28 +297,6 @@ function reporterProfile(session) {
 function generateServerReportId() {
   var stamp = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyMMddHHmmss');
   return 'PE' + stamp + ('0' + Math.floor(Math.random() * 100)).slice(-2);
-}
-
-/**
- * เขียนรายงาน (legacy + Reports) ภายใน lock พร้อมกัน id ซ้ำ
- * @returns {boolean} false ถ้า id ซ้ำ
- */
-function writeReport(report) {
-  var legacySheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(ERROR_SHEET);
-  var migrated = reportsMigrated();
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    var lastRow = legacySheet.getLastRow();
-    var ids = lastRow > 0 ? legacySheet.getRange(1, 2, lastRow, 1).getValues() : [];
-    if (ids.some(function(r) { return String(r[0]) === report.id; })) return false;
-    legacySheet.appendRow(legacyRowFromReport(report).map(sanitizeInput));
-    if (migrated) Table(REPORTS_SHEET).append(report);
-  } finally {
-    lock.releaseLock();
-  }
-  bumpReportsVersion();
-  return true;
 }
 
 var REQUIRED_REPORT_FIELDS = {

@@ -23,8 +23,9 @@ function appUpdatedResponse() {
 function doGet(e) {
   try {
     drugIndexMemo = null;
+    reportsMemo = null;
     var action = String((e && e.parameter && e.parameter.action) || '');
-    if (action === 'drugs.list') return handleV2(action, {}, null);
+    if (action === 'drugs.list' || action === 'drugs.overrides') return handleV2(action, {}, null);
     if (action) return appUpdatedResponse();
     return jsonResponse({ status: 'OK', message: 'Predispensing Error Recorder API v2', timestamp: new Date().toISOString() });
   } catch (error) {
@@ -36,6 +37,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     drugIndexMemo = null;
+    reportsMemo = null;
     var params = (e && e.parameter) ? e.parameter : {};
     var action = String(params.action || '');
     if (action.indexOf('.') === -1) return appUpdatedResponse();
