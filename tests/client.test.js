@@ -13,8 +13,10 @@ function loadClient(fetchImpl, { online = true } = {}) {
     const context = {
         console: { log() {}, warn() {}, error() {} },
         URL, FormData, Date, JSON, Math, Promise, Set, Map, Event: class {},
-        setTimeout: () => 0,
+        // timer สั้น (retry backoff) ทำงานทันที; timer ยาว (timeout / retry outbox 60s) ไม่ทำงานในเทส
+        setTimeout: (fn, ms) => (ms <= 5000 ? setImmediate(fn) : 0),
         clearTimeout: () => {},
+        AbortController,
         navigator: { onLine: online },
         getComputedStyle: () => ({ getPropertyValue: () => '' }),
         document: {
@@ -145,6 +147,30 @@ test('outbox: ออฟไลน์ไม่พยายามส่ง แล�
     flaky.run("saveSession('f'.repeat(64), 60); currentUser = { psCode: 'U01' }");
     flaky.run("queueReport({ reportId: 'R1', submissionToken: 't1' }); queueReport({ reportId: 'R2', submissionToken: 't2' })");
     assert.equal(await flaky.run('flushOutbox()'), 0);
-    assert.equal(flaky.calls.length, 1, 'หยุดหลังเน็ตหลุดครั้งแรก');
+    assert.equal(flaky.calls.length, 3, 'ลอง R1 ครบ 3 ครั้งแล้วหยุด (ไม่ส่ง R2 ต่อ)');
+    assert.ok(flaky.calls.every(c => c.reportId === 'R1'));
     assert.equal(JSON.parse(flaky.run('JSON.stringify(readOutbox())')).length, 2);
+});
+
+test('apiPost ลองใหม่เมื่อ Google ตอบหน้า error/เชื่อมต่อไม่ได้ แล้วสำเร็จ', async () => {
+    let n = 0;
+    const { run, calls } = loadClient(() => {
+        n++;
+        if (n === 1) throw new TypeError('Failed to fetch'); // CORS / 404 echo
+        if (n === 2) return 'NOT_JSON';
+        return { success: true, data: [] };
+    });
+    // จำลองหน้า HTML: fetch mock คืน json() ที่ throw เมื่อ body เป็น 'NOT_JSON'
+    run(`const _f = fetch; fetch = async (u, o) => { const r = await _f(u, o); const b = await r.json(); return { ok: true, json: async () => { if (b === 'NOT_JSON') throw new SyntaxError('html'); return b; } }; }`);
+    const res = await run("apiPost('getErrors')");
+    assert.equal(res.success, true);
+    assert.equal(calls.length, 3);
+});
+
+test('apiPost ไม่ลองซ้ำสำหรับ action ที่ส่งซ้ำแล้วผลเปลี่ยน และแจ้งข้อความที่ชัดเจน', async () => {
+    const { run, calls } = loadClient(() => { throw new TypeError('Failed to fetch'); });
+    await assert.rejects(run("apiPost('adminResetPassword', { psCode: 'U01' })"), /Google ตอบช้าหรือขัดข้องชั่วคราว/);
+    assert.equal(calls.length, 1);
+    await assert.rejects(run("apiPost('login', { userCode: 'U01', password: 'x' })"));
+    assert.equal(calls.length, 1 + 3, 'login ลองทั้งหมด 3 ครั้ง');
 });

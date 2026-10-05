@@ -140,9 +140,60 @@ function clearSession() {
     localStorage.removeItem('currentUser');
 }
 
+// Apps Script บางช่วงตอบช้ามาก หรือ endpoint redirect (script.googleusercontent.com/macros/echo)
+// ตอบ 404 เป็นหน้า HTML ซึ่งเบราว์เซอร์รายงานเป็น "CORS error" — เป็นปัญหาชั่วคราวฝั่ง Google
+// จึงลองใหม่อัตโนมัติ เฉพาะ action ที่ส่งซ้ำแล้วผลไม่ต่าง
+const API_TIMEOUT_MS = 45000;
+const API_RETRY_DELAYS_MS = [1500, 4000];
+// ส่งซ้ำแล้วผลเปลี่ยน: ออกรหัสชั่วคราวซ้ำ (รหัสแรกหาย), ลงทะเบียน/เปลี่ยนรหัสซ้ำ (ครั้งที่ 2 error)
+const NON_RETRYABLE_ACTIONS = new Set(['adminResetPassword', 'register', 'changePassword', 'addDrug']);
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function serverUnavailableError(cause) {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const error = new Error(offline
+        ? 'ไม่มีสัญญาณอินเทอร์เน็ต กรุณาตรวจสอบการเชื่อมต่อ'
+        : 'Server ของ Google ตอบช้าหรือขัดข้องชั่วคราว กรุณาลองใหม่ในอีกสักครู่', { cause });
+    error.network = true;
+    return error;
+}
+
+/**
+ * ส่ง request หนึ่งครั้ง — throw error.network เมื่อเชื่อมต่อไม่ได้/timeout/ได้หน้า error แทน JSON
+ * @returns {Promise<Object>} JSON ที่ server ตอบ
+ */
+async function postOnce(formData) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), API_TIMEOUT_MS) : null;
+    try {
+        let response;
+        try {
+            response = await fetch(googleSheetsConfig.webAppUrl, {
+                method: 'POST', body: formData, redirect: 'follow',
+                signal: controller ? controller.signal : undefined
+            });
+        } catch (networkError) {
+            throw serverUnavailableError(networkError);
+        }
+        if (!response.ok) {
+            throw serverUnavailableError(new Error(`HTTP ${response.status}`));
+        }
+        try {
+            return await response.json();
+        } catch (parseError) {
+            // หน้า error HTML ของ Google แทน JSON
+            throw serverUnavailableError(parseError);
+        }
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 /**
  * เรียก Apps Script ผ่าน POST (FormData = ไม่มี CORS preflight)
  * แนบ session token อัตโนมัติ; ถ้า server ตอบ authRequired จะพากลับหน้า login
+ * ลองใหม่อัตโนมัติเมื่อ Google ขัดข้องชั่วคราว (ยกเว้น NON_RETRYABLE_ACTIONS)
  * @returns {Promise<Object>} JSON ที่ server ตอบ (throw ถ้า success !== true)
  */
 async function apiPost(action, fields = {}) {
@@ -158,23 +209,18 @@ async function apiPost(action, fields = {}) {
         formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
     });
 
-    let response;
-    try {
-        response = await fetch(googleSheetsConfig.webAppUrl, { method: 'POST', body: formData, redirect: 'follow' });
-    } catch (networkError) {
-        const error = new Error('ไม่สามารถเชื่อมต่อ Server ได้ กรุณาตรวจสอบเน็ตเวิร์ค แล้วลองใหม่', { cause: networkError });
-        error.network = true;
-        throw error;
-    }
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-    }
-
+    const delays = NON_RETRYABLE_ACTIONS.has(action) ? [] : API_RETRY_DELAYS_MS;
     let result;
-    try {
-        result = await response.json();
-    } catch (parseError) {
-        throw new Error('Server ตอบกลับข้อมูลผิดรูปแบบ กรุณาลองใหม่', { cause: parseError });
+    for (let attempt = 0; ; attempt++) {
+        try {
+            result = await postOnce(formData);
+            break;
+        } catch (error) {
+            const canRetry = error.network && attempt < delays.length && navigator.onLine !== false;
+            if (!canRetry) throw error;
+            debugLog(`apiPost(${action}) attempt ${attempt + 1} failed, retrying`, error.cause);
+            await sleep(delays[attempt]);
+        }
     }
 
     if (result.authRequired) {

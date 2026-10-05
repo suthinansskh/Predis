@@ -21,9 +21,23 @@ function normalizeWebAppDrug(d) {
     };
 }
 
-async function fetchDrugsFromWebApp() {
-    const response = await fetch(googleSheetsConfig.webAppUrl + '?action=getDrugs', { redirect: 'follow' });
-    const result = await response.json();
+async function fetchDrugsFromWebApp(retries = 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let result;
+    try {
+        const response = await fetch(googleSheetsConfig.webAppUrl + '?action=getDrugs', { redirect: 'follow', signal: controller.signal });
+        result = await response.json();
+    } catch (error) {
+        // Google ขัดข้องชั่วคราว (404/timeout) — ลองอีกครั้งก่อนใช้ไฟล์สำรอง
+        if (retries > 0) {
+            await new Promise(r => setTimeout(r, 2000));
+            return fetchDrugsFromWebApp(retries - 1);
+        }
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
     if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
         throw new Error(result.error || 'ไม่มีข้อมูลยาใน Google Sheets');
     }

@@ -1,5 +1,5 @@
 // เพิ่ม CACHE_VERSION ทุกครั้งที่เปลี่ยนรายการ ASSETS (tests/sw.test.js ตรวจว่าไฟล์มีอยู่จริง)
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 9;
 const CACHE_NAME = `predis-v${CACHE_VERSION}`;
 
 // ลำดับการโหลดสคริปต์ (classic script แชร์ global) — init ต้องอยู่ท้ายสุด
