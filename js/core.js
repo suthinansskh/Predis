@@ -146,7 +146,8 @@ function clearSession() {
 const API_TIMEOUT_MS = 45000;
 const API_RETRY_DELAYS_MS = [1500, 4000];
 // ส่งซ้ำแล้วผลเปลี่ยน: ออกรหัสชั่วคราวซ้ำ (รหัสแรกหาย), ลงทะเบียน/เปลี่ยนรหัสซ้ำ (ครั้งที่ 2 error)
-const NON_RETRYABLE_ACTIONS = new Set(['adminResetPassword', 'register', 'changePassword', 'addDrug']);
+const NON_RETRYABLE_ACTIONS = new Set(['adminResetPassword', 'register', 'changePassword', 'addDrug',
+    'auth.register', 'auth.changePassword', 'auth.activate', 'drugs.add', 'users.issueActivations']);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -236,4 +237,42 @@ async function apiPost(action, fields = {}) {
         throw error;
     }
     return result;
+}
+
+/**
+ * เรียก API v2 (action มีจุด เช่น 'reports.stats') — ตอบ {ok, data} | {ok:false, error:{code, message}}
+ * @returns {Promise<*>} data เมื่อสำเร็จ; throw Error ที่มี .code / .retryAfter / .fields เมื่อไม่สำเร็จ
+ */
+async function apiV2(action, payload = {}) {
+    if (!googleSheetsConfig.webAppUrl) {
+        throw new Error('ยังไม่ได้ตั้งค่า Web App URL');
+    }
+    const formData = new FormData();
+    formData.append('action', action);
+    const token = getSessionToken();
+    if (token) formData.append('token', token);
+    formData.append('payload', JSON.stringify(payload));
+
+    const delays = NON_RETRYABLE_ACTIONS.has(action) ? [] : API_RETRY_DELAYS_MS;
+    let body;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            body = await postOnce(formData);
+            break;
+        } catch (error) {
+            if (!(error.network && attempt < delays.length && navigator.onLine !== false)) throw error;
+            await sleep(delays[attempt]);
+        }
+    }
+    if (body.ok) return body.data;
+
+    const info = body.error || {};
+    const error = new Error(info.message || 'เกิดข้อผิดพลาดจาก Server');
+    Object.assign(error, info);
+    if (info.code === 'AUTH_REQUIRED') {
+        clearSession();
+        showLoginPage();
+        error.authRequired = true;
+    }
+    throw error;
 }

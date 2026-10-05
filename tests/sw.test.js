@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
-const PAGES = ['index.html', 'report.html', 'dashboard.html', 'myreport.html'];
+const PAGES = ['index.html', 'report.html', 'dashboard.html', 'myreport.html', 'had.html'];
 
 function loadSw() {
     const context = { self: { addEventListener() {}, location: { origin: 'https://example.test' } } };

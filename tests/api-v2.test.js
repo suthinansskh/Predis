@@ -266,3 +266,19 @@ test('users.update แก้กลุ่มงานได้ และ drugs.li
     const drugs = env.get({ action: 'drugs.list' }).data.drugs;
     assert.equal(drugs.find(d => d.drugCode === 'MORPH10').had, 'High');
 });
+
+test('reports.stats hadOnly: แนวโน้ม 12 เดือนไม่ขึ้นกับช่วงวันที่ และมียอดรวมทุกเหตุการณ์ไว้คำนวณสัดส่วน', () => {
+    const { env, tokenOf } = setup({ now: '2026-10-05T10:00:00+07:00' });
+    const token = tokenOf('P01', 'PharmPass#11');
+    env.v2('reports.create', { ...REPORT, eventDate: '2026-10-02' }, token);                         // HAD
+    env.v2('reports.create', { ...REPORT, eventDate: '2026-08-15' }, token);                         // HAD (นอกช่วง)
+    env.v2('reports.create', { ...REPORT, eventDate: '2026-10-03', incorrectDrugCode: 'PARA500' }, token); // ไม่ใช่ HAD
+
+    const s = env.v2('reports.stats', { hadOnly: true, from: '2026-10-01', to: '2026-10-31' }, token).data;
+    assert.equal(s.totals.all, 1, 'HAD ในช่วง ต.ค.');
+    assert.equal(s.comparison.allInRange, 2, 'ทุกเหตุการณ์ในช่วงเดียวกัน');
+    const month = (list, m) => list.find(x => x.month === m).count;
+    assert.equal(month(s.monthly, '2026-08'), 1, 'แนวโน้มรวมเดือนนอกช่วงที่เลือก');
+    assert.equal(month(s.comparison.monthlyAll, '2026-10'), 2);
+    assert.deepEqual(plain(s.topHadDrugs.map(d => [d.key, d.count])), [['MORPH10', 1]]);
+});

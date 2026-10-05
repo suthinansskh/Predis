@@ -53,6 +53,9 @@ function showMainApp() {
     // Update dashboard user info
     updateDashboardUserInfo();
 
+    if (typeof hideLoginHelp === 'function') hideLoginHelp();
+    if (typeof refreshAdminBadge === 'function') refreshAdminBadge();
+
     // Load initial data based on current page
     if (currentPage === 'dashboard' || currentPage === 'myreport') {
         loadData();
@@ -148,7 +151,12 @@ async function handleLogin(event) {
         }
     } catch (error) {
         console.error('Login error:', error);
-        showNotification('เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + error.message, 'error');
+        const code = error.result && error.result.code;
+        if (typeof showLoginHelp === 'function' && code) {
+            showLoginHelp(code, error.message, error.result.retryAfter);
+        } else {
+            showNotification('เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + error.message, 'error');
+        }
     } finally {
         loginBtn.innerHTML = originalText;
         loginBtn.disabled = false;

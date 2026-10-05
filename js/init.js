@@ -38,6 +38,8 @@ function initializeApp() {
         initializeReportPage();
     } else if (currentPage === 'index') {
         initializeIndexPage();
+    } else if (currentPage === 'had') {
+        initHadDashboard();
     }
 
     updateOutboxBadge();

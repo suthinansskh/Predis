@@ -34,6 +34,21 @@ function topEntries(counts, n, labels) {
     .slice(0, n || Infinity);
 }
 
+/** Pure: จำนวนรายงานต่อเดือน 12 เดือนล่าสุด (รวมเดือนของ today) */
+function monthlyCounts(reports, today) {
+  var monthly = [];
+  var cursor = new Date(today.slice(0, 7) + '-01T00:00:00Z');
+  cursor.setUTCMonth(cursor.getUTCMonth() - 11);
+  var byMonth = countBy(reports.filter(function(r) { return /^\d{4}-\d{2}-\d{2}$/.test(r.eventDate); }),
+    function(r) { return r.eventDate.slice(0, 7); });
+  for (var i = 0; i < 12; i++) {
+    var key = cursor.toISOString().slice(0, 7);
+    monthly.push({ month: key, count: byMonth[key] || 0 });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return monthly;
+}
+
 /**
  * Pure: สรุปสถิติจากรายการรายงาน (กรองมาแล้ว)
  * @param {Object[]} reports object ของ Reports
@@ -55,16 +70,7 @@ function computeStats(reports, opts) {
     if (isTrue(r.isHad)) totals.had++;
   });
 
-  // แนวโน้ม 12 เดือนล่าสุด (รวมเดือนปัจจุบัน)
-  var monthly = [];
-  var cursor = new Date(month + '-01T00:00:00Z');
-  cursor.setUTCMonth(cursor.getUTCMonth() - 11);
-  var byMonth = countBy(dated, function(r) { return r.eventDate.slice(0, 7); });
-  for (var i = 0; i < 12; i++) {
-    var key = cursor.toISOString().slice(0, 7);
-    monthly.push({ month: key, count: byMonth[key] || 0 });
-    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-  }
+  var monthly = monthlyCounts(dated, today);
 
   var drugLabels = {};
   var drugCounts = countBy(dated, function(r) {
@@ -119,10 +125,28 @@ function getReportStats(session, p) {
   if (cached) return { ok: true, data: JSON.parse(cached) };
 
   filter.psCode = session.psCode;
-  var stats = computeStats(filterReports(readAllReports(), filter), {
-    today: formatBangkokDate(new Date()),
-    includeReporters: fullAccess
-  });
+  var all = readAllReports();
+  var today = formatBangkokDate(new Date());
+  var stats = computeStats(filterReports(all, filter), { today: today, includeReporters: fullAccess });
+
+  // แนวโน้มแสดง 12 เดือนเสมอ (ไม่ขึ้นกับช่วงวันที่ที่เลือก)
+  var noDate = {};
+  Object.keys(filter).forEach(function(k) { noDate[k] = filter[k]; });
+  noDate.from = '';
+  noDate.to = '';
+  stats.monthly = monthlyCounts(filterReports(all, noDate), today);
+
+  // เมื่อกรองเฉพาะ HAD: ส่งยอดรวมทุกเหตุการณ์ (ช่วงเดียวกัน) มาด้วยเพื่อคำนวณสัดส่วน
+  if (filter.hadOnly) {
+    var everyKind = {};
+    Object.keys(filter).forEach(function(k) { everyKind[k] = filter[k]; });
+    everyKind.hadOnly = false;
+    noDate.hadOnly = false;
+    stats.comparison = {
+      allInRange: filterReports(all, everyKind).filter(function(r) { return /^\d{4}-\d{2}-\d{2}$/.test(r.eventDate); }).length,
+      monthlyAll: monthlyCounts(filterReports(all, noDate), today)
+    };
+  }
   stats.generatedAt = new Date().toISOString();
   var json = JSON.stringify(stats);
   if (json.length < 90000) cache.put(cacheKey, json, STATS_CACHE_SECONDS);

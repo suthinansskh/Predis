@@ -19,8 +19,10 @@ function setupLoginLinks() {
     links.id = 'loginLinks';
     links.className = 'login-links';
     links.innerHTML = `
+        <button type="button" class="link-btn" data-action="activate"><i class="fas fa-ticket-alt"></i> มีรหัสเปิดใช้งาน</button>
         <button type="button" class="link-btn" data-action="forgot">ลืมรหัสผ่าน?</button>
         <button type="button" class="link-btn" data-action="register"><i class="fas fa-user-plus"></i> ลงทะเบียนผู้ใช้ใหม่</button>`;
+    links.querySelector('[data-action="activate"]').addEventListener('click', () => showActivateDialog());
     links.querySelector('[data-action="forgot"]').addEventListener('click', showForgotPasswordDialog);
     links.querySelector('[data-action="register"]').addEventListener('click', showRegisterDialog);
     loginForm.insertAdjacentElement('afterend', links);
@@ -81,7 +83,7 @@ function showForgotPasswordDialog() {
     const dialog = openFormDialog({
         id: 'forgotPasswordDialog',
         title: '<i class="fas fa-unlock-alt"></i> ลืมรหัสผ่าน',
-        note: 'คำขอจะถูกส่งถึงผู้ดูแลระบบ ซึ่งจะออกรหัสผ่านชั่วคราวให้คุณโดยตรง (ติดต่อรับด้วยตนเอง)',
+        note: 'คำขอจะถูกส่งถึงผู้ดูแลระบบ ซึ่งจะออก "รหัสเปิดใช้งาน" ให้คุณ (รับจากหัวหน้าหรือผู้ดูแล) แล้วกด "มีรหัสเปิดใช้งาน" เพื่อตั้งรหัสผ่านใหม่เอง',
         submitLabel: 'ส่งคำขอ',
         body: `
             <div class="form-group">
@@ -106,6 +108,7 @@ function showForgotPasswordDialog() {
 let managedUsers = [];
 let pendingResets = [];
 let userFilter = 'pending';
+let accountStats = null;
 
 async function loadUserManagement() {
     const container = document.getElementById('userManagementBody');
@@ -116,9 +119,13 @@ async function loadUserManagement() {
     }
     container.innerHTML = '<p class="text-center"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</p>';
     try {
-        const result = await apiPost('listUsers');
+        const [result, stats] = await Promise.all([
+            apiPost('listUsers'),
+            apiV2('admin.loginStats', { days: 7 }).catch(() => null)
+        ]);
         managedUsers = result.users || [];
         pendingResets = result.pendingResets || [];
+        accountStats = stats;
         renderUserManagement();
     } catch (error) {
         container.innerHTML = `<p class="text-center">${escapeHtml(error.message)}</p>`;
@@ -148,7 +155,7 @@ function userActionsHtml(user) {
             <button class="btn btn-secondary btn-sm" data-user-action="reject" data-ps="${ps}"><i class="fas fa-times"></i> ปฏิเสธ</button>`;
     }
     return `
-        <button class="btn btn-secondary btn-sm" data-user-action="reset" data-ps="${ps}" title="ออกรหัสผ่านชั่วคราว"><i class="fas fa-key"></i> รีเซ็ตรหัส</button>
+        <button class="btn btn-secondary btn-sm" data-user-action="activation" data-ps="${ps}" title="ออกรหัสเปิดใช้งานให้ผู้ใช้ตั้งรหัสผ่านเอง"><i class="fas fa-ticket-alt"></i> ออกรหัสเปิดใช้งาน</button>
         ${isSelf ? '' : `<button class="btn btn-secondary btn-sm" data-user-action="${user.active ? 'disable' : 'enable'}" data-ps="${ps}">
             ${user.active ? '<i class="fas fa-ban"></i> ปิดใช้งาน' : '<i class="fas fa-check"></i> เปิดใช้งาน'}</button>`}`;
 }
@@ -171,7 +178,7 @@ function renderUserManagement() {
                 ${pendingResets.map(r => `
                     <li>
                         <span><strong>${escapeHtml(r.psCode)}</strong> ${escapeHtml(r.name)} <small>${escapeHtml(r.requestedAt)}</small></span>
-                        <button class="btn btn-primary btn-sm" data-user-action="reset" data-ps="${escapeHtml(r.psCode)}"><i class="fas fa-key"></i> ออกรหัสชั่วคราว</button>
+                        <button class="btn btn-primary btn-sm" data-user-action="activation" data-ps="${escapeHtml(r.psCode)}"><i class="fas fa-ticket-alt"></i> ออกรหัสเปิดใช้งาน</button>
                     </li>`).join('')}
             </ul>
         </div>`;
@@ -192,7 +199,7 @@ function renderUserManagement() {
             <tr>
                 <td><strong>${escapeHtml(u.psCode)}</strong>${u.mustChangePassword ? ' <span class="tag tag-info" title="ต้องเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบ">รหัสชั่วคราว</span>' : ''}</td>
                 <td>${escapeHtml(u.name)}${u.email ? `<br><small>${escapeHtml(u.email)}</small>` : ''}</td>
-                <td>${escapeHtml(u.group)}</td>
+                <td>${isSelf ? escapeHtml(u.group) : groupSelectHtml(u)}</td>
                 <td>${isSelf ? escapeHtml(USER_LEVEL_LABELS[u.level] || u.level) : levelSelectHtml(u)}</td>
                 <td>${userStatusTag(u)}${u.request === 'PENDING' && u.requestedAt ? `<br><small>${escapeHtml(u.requestedAt)}</small>` : ''}</td>
                 <td class="user-actions">${userActionsHtml(u)}</td>
@@ -200,6 +207,7 @@ function renderUserManagement() {
         }).join('');
 
     container.innerHTML = `
+        ${accountSummaryHtml()}
         ${resetsHtml}
         <div class="user-tabs" role="group" aria-label="กรองผู้ใช้">${tabs}</div>
         <div class="data-table-container">
@@ -278,13 +286,18 @@ async function handleUserManagementClick(event) {
             case 'enable':
                 await runUserAction('updateUser', psCode, { active: true });
                 break;
-            case 'reset':
-                if (confirm(`ออกรหัสผ่านชั่วคราวให้ ${label}? รหัสเดิมจะใช้ไม่ได้ทันที`)) {
-                    const result = await apiPost('adminResetPassword', { psCode });
-                    showTempPasswordDialog(result);
-                    await loadUserManagement();
+            case 'activation':
+                if (confirm(`ออกรหัสเปิดใช้งานให้ ${label}? รหัสเปิดใช้งานเดิม (ถ้ามี) จะใช้ไม่ได้`)) {
+                    await issueAndPrint({ psCodes: [psCode] });
                 }
                 break;
+            case 'bulk-activation': {
+                const n = accountStats ? accountStats.accounts.weakPassword : 0;
+                if (confirm(`ออกรหัสเปิดใช้งานให้ผู้ใช้ที่ยังใช้รหัสเริ่มต้น ${n} คน และพิมพ์ใบแจก?\nรหัสเปิดใช้งานเดิมที่ยังไม่ใช้จะถูกยกเลิก`)) {
+                    await issueAndPrint({ weakOnly: true });
+                }
+                break;
+            }
         }
     } catch (error) {
         showNotification(error.message, 'error');
@@ -294,6 +307,17 @@ async function handleUserManagementClick(event) {
 }
 
 async function handleUserLevelChange(event) {
+    const groupSelect = event.target.closest('.user-group-select');
+    if (groupSelect) {
+        const user = managedUsers.find(u => u.psCode === groupSelect.dataset.ps);
+        try {
+            await runUserAction('updateUser', groupSelect.dataset.ps, { group: groupSelect.value });
+        } catch (error) {
+            if (user) groupSelect.value = user.group;
+            showNotification(error.message, 'error');
+        }
+        return;
+    }
     const select = event.target.closest('.user-level-select');
     if (!select) return;
     const user = managedUsers.find(u => u.psCode === select.dataset.ps);
@@ -323,4 +347,251 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const refreshBtn = document.getElementById('refreshUsersBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', loadUserManagement);
+
+    // ลิงก์ในใบรหัส: ?activate=1 เปิดหน้าต่างเปิดใช้งานทันที
+    if (/[?&]activate=1/.test(window.location.search) && !getSessionToken()) {
+        showActivateDialog();
+    }
 });
+
+// ===== เปิดใช้งานบัญชีด้วยรหัสเปิดใช้งาน =====
+
+function showActivateDialog() {
+    const typed = (document.getElementById('userCode') || {}).value || '';
+    const dialog = openFormDialog({
+        id: 'activateDialog',
+        title: '<i class="fas fa-ticket-alt"></i> เปิดใช้งานบัญชี',
+        note: 'กรอกรหัสเปิดใช้งาน 8 ตัวจากใบที่ได้รับ แล้วตั้งรหัสผ่านใหม่ของคุณเอง (รหัสใช้ได้ครั้งเดียว)',
+        submitLabel: 'ตั้งรหัสผ่านและเข้าสู่ระบบ',
+        body: `
+            <div class="form-group">
+                <label for="actUserCode">PS Code</label>
+                <input type="text" id="actUserCode" autocomplete="username" maxlength="30" required>
+            </div>
+            <div class="form-group">
+                <label for="actCode">รหัสเปิดใช้งาน</label>
+                <input type="text" id="actCode" autocomplete="one-time-code" maxlength="12" required
+                       style="text-transform: uppercase; letter-spacing: 2px">
+            </div>
+            ${passwordFieldsHtml('act')}`,
+        onSubmit: async (form) => {
+            const userCode = form.querySelector('#actUserCode').value.trim();
+            const code = form.querySelector('#actCode').value.trim();
+            if (!userCode || !code) {
+                showNotification('กรุณากรอก PS Code และรหัสเปิดใช้งาน', 'error');
+                return false;
+            }
+            const newPassword = readNewPassword(form, 'act');
+            if (!newPassword) return false;
+            try {
+                const result = await apiV2('auth.activate', { userCode, code, newPassword });
+                currentUser = result.user;
+                saveSession(result.token, result.expiresIn);
+                localStorage.setItem('currentUser', JSON.stringify(result.user));
+                showNotification(`เปิดใช้งานบัญชีสำเร็จ ยินดีต้อนรับ ${result.user.name}`, 'success');
+                showMainApp();
+                initializeApp();
+            } catch (error) {
+                const wait = error.retryAfter ? ` (รอ ${error.retryAfter} วินาที)` : '';
+                showNotification(error.message + wait, 'error');
+                return false;
+            }
+        }
+    });
+    if (dialog && typed) dialog.querySelector('#actUserCode').value = typed.trim();
+}
+
+// ===== คำแนะนำใต้ฟอร์ม login (ค้างไว้ ไม่หายเหมือน notification) =====
+
+const LOGIN_HELP = {
+    DEFAULT_PASSWORD_BLOCKED: {
+        tone: 'warning',
+        extra: 'ถ้าได้รับใบ "รหัสเปิดใช้งาน" แล้ว กด "ใช้รหัสเปิดใช้งาน" — ถ้ายังไม่ได้รับ กด "ขอรหัสจากผู้ดูแล"',
+        actions: [['activate', 'ใช้รหัสเปิดใช้งาน'], ['forgot', 'ขอรหัสจากผู้ดูแล']]
+    },
+    WRONG_CREDENTIALS: {
+        tone: 'error',
+        extra: 'ใช้ PS Code และรหัสผ่านที่ตั้งเอง (ไม่ใช่ 4 ตัวท้ายบัตรประชาชนแล้ว) — จำไม่ได้กด "ลืมรหัสผ่าน"',
+        actions: [['forgot', 'ลืมรหัสผ่าน']]
+    },
+    LOCKED: { tone: 'error', actions: [['forgot', 'ลืมรหัสผ่าน']] },
+    PENDING_APPROVAL: { tone: 'info', actions: [] },
+    REJECTED: { tone: 'error', actions: [] },
+    DISABLED: { tone: 'error', actions: [] }
+};
+
+function hideLoginHelp() {
+    const el = document.getElementById('loginHelp');
+    if (el) el.remove();
+}
+
+function showLoginHelp(code, message, retryAfter) {
+    const form = document.getElementById('loginForm');
+    const help = LOGIN_HELP[code];
+    if (!form || !help) {
+        showNotification(message, 'error');
+        return;
+    }
+    hideLoginHelp();
+    const box = document.createElement('div');
+    box.id = 'loginHelp';
+    box.className = `login-help login-help-${help.tone}`;
+    box.setAttribute('role', 'alert');
+    box.innerHTML = `
+        <p><strong>${escapeHtml(message)}</strong></p>
+        ${help.extra ? `<p>${escapeHtml(help.extra)}</p>` : ''}
+        ${help.actions.length ? `<div class="login-help-actions">${help.actions.map(([action, label]) =>
+            `<button type="button" class="btn btn-secondary btn-sm" data-help-action="${action}">${label}</button>`).join('')}</div>` : ''}`;
+    box.querySelectorAll('[data-help-action]').forEach(btn => btn.addEventListener('click', () => {
+        if (btn.dataset.helpAction === 'activate') showActivateDialog();
+        if (btn.dataset.helpAction === 'forgot') showForgotPasswordDialog();
+    }));
+    form.insertAdjacentElement('afterend', box);
+
+    // นับถอยหลังเมื่อถูกหน่วงเวลา
+    if (code === 'LOCKED' && retryAfter > 0) {
+        const loginBtn = form.querySelector('.login-btn');
+        let left = retryAfter;
+        // หลัง finally ของ handleLogin (ซึ่งเปิดปุ่มกลับ)
+        setTimeout(() => { if (loginBtn && left > 0) loginBtn.disabled = true; }, 0);
+        const timer = setInterval(() => {
+            left -= 1;
+            const strong = box.querySelector('strong');
+            if (strong) strong.textContent = `ใส่รหัสผ่านผิดหลายครั้ง ลองใหม่ได้ใน ${left} วินาที`;
+            if (left <= 0 || !document.body.contains(box)) {
+                clearInterval(timer);
+                if (loginBtn) loginBtn.disabled = false;
+                if (strong && left <= 0) strong.textContent = 'ลองเข้าสู่ระบบอีกครั้งได้แล้ว';
+            }
+        }, 1000);
+    }
+}
+
+// ===== Admin: สรุปบัญชี, ออกรหัสเปิดใช้งาน, พิมพ์ใบ, badge =====
+
+function groupSelectHtml(user) {
+    const groups = [...new Set([...USER_GROUP_OPTIONS, user.group].filter(Boolean))];
+    const options = [`<option value="" ${user.group ? '' : 'selected'} disabled>-- ระบุกลุ่ม --</option>`]
+        .concat(groups.map(g => `<option value="${escapeHtml(g)}" ${user.group === g ? 'selected' : ''}>${escapeHtml(g)}</option>`))
+        .join('');
+    return `<select class="user-group-select${user.group ? '' : ' needs-value'}" data-ps="${escapeHtml(user.psCode)}" aria-label="กลุ่มงานของ ${escapeHtml(user.psCode)}">${options}</select>`;
+}
+
+function accountSummaryHtml() {
+    if (!accountStats) return '';
+    const a = accountStats.accounts;
+    const week = accountStats.days.reduce((acc, d) => {
+        Object.entries(d.counts).forEach(([k, v]) => { acc[k] = (acc[k] || 0) + v; });
+        return acc;
+    }, {});
+    const tile = (label, value, tone = '') => `<div class="account-tile ${tone}"><span class="account-tile-value">${value}</span><span>${label}</span></div>`;
+    return `
+        <div class="account-summary">
+            <div class="account-tiles">
+                ${tile('บัญชีที่ใช้งาน', a.active)}
+                ${tile('ยังใช้รหัสเริ่มต้น (เข้าระบบไม่ได้)', a.weakPassword, a.weakPassword ? 'tone-danger' : '')}
+                ${tile('รหัสเปิดใช้งานที่ยังไม่ใช้', a.activationsPending)}
+                ${tile('ยังไม่ระบุกลุ่มงาน', a.missingGroup, a.missingGroup ? 'tone-warning' : '')}
+                ${tile('login สำเร็จ 7 วัน', week.LOGIN_SUCCESS || 0)}
+                ${tile('ถูกบล็อก/ผิด 7 วัน', (week.LOGIN_BLOCKED_WEAK || 0) + (week.LOGIN_FAILED || 0))}
+            </div>
+            ${a.weakPassword ? `<button class="btn btn-primary" data-user-action="bulk-activation">
+                <i class="fas fa-print"></i> ออกรหัสเปิดใช้งาน + พิมพ์ใบแจก (${a.weakPassword} คน)</button>` : ''}
+        </div>`;
+}
+
+async function issueAndPrint(payload) {
+    // เปิดหน้าต่างก่อน await (กัน popup blocker) แล้วค่อยเติมเนื้อหา
+    const win = window.open('', '_blank');
+    try {
+        const { items } = await apiV2('users.issueActivations', payload);
+        if (win) {
+            printActivationSlips(win, items);
+        } else {
+            showActivationCodesDialog(items);
+        }
+        showNotification(`ออกรหัสเปิดใช้งานแล้ว ${items.length} คน`, 'success');
+        await loadUserManagement();
+    } catch (error) {
+        if (win) win.close();
+        throw error;
+    }
+}
+
+function activationUrl() {
+    return `${location.origin}${location.pathname.replace(/[^/]*$/, '')}report.html?activate=1`;
+}
+
+function printActivationSlips(win, items) {
+    const byGroup = {};
+    items.forEach(i => { (byGroup[i.group || 'ไม่ระบุกลุ่ม'] ||= []).push(i); });
+    const url = activationUrl();
+    const slips = Object.entries(byGroup).sort().map(([group, list]) => `
+        <h2>${escapeHtml(group)} (${list.length} คน)</h2>
+        <div class="slips">${list.sort((a, b) => a.psCode.localeCompare(b.psCode)).map(i => `
+            <div class="slip">
+                <div class="who"><strong>${escapeHtml(i.name)}</strong> — PS Code: <strong>${escapeHtml(i.psCode)}</strong></div>
+                <div class="code">${escapeHtml(i.code.slice(0, 4))}-${escapeHtml(i.code.slice(4))}</div>
+                <ol>
+                    <li>เปิด ${escapeHtml(url)}</li>
+                    <li>กด "มีรหัสเปิดใช้งาน" กรอก PS Code และรหัสด้านบน</li>
+                    <li>ตั้งรหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)</li>
+                </ol>
+                <div class="exp">ใช้ได้ครั้งเดียว ภายใน ${escapeHtml(i.expiresAt)} — ห้ามให้ผู้อื่น</div>
+            </div>`).join('')}
+        </div>`).join('');
+    win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รหัสเปิดใช้งาน Predis</title>
+        <style>
+            body { font-family: 'Sarabun', sans-serif; margin: 16px; color: #000; }
+            h1 { font-size: 18px; } h2 { font-size: 16px; margin: 16px 0 8px; page-break-before: auto; }
+            .slips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .slip { border: 1px dashed #555; padding: 10px; page-break-inside: avoid; font-size: 13px; }
+            .code { font-size: 26px; font-weight: 700; letter-spacing: 4px; margin: 6px 0; font-family: monospace; }
+            ol { margin: 4px 0 4px 18px; padding: 0; } .exp { font-size: 12px; color: #444; }
+            @media print { .no-print { display: none; } }
+        </style></head><body>
+        <div class="no-print"><button onclick="window.print()">พิมพ์</button>
+        <p>รหัสแสดงครั้งเดียว — พิมพ์หรือบันทึกเป็น PDF ก่อนปิดหน้านี้ ตัดแจกเป็นรายบุคคล</p></div>
+        <h1>รหัสเปิดใช้งานบัญชี Predis (${items.length} คน)</h1>${slips}</body></html>`);
+    win.document.close();
+}
+
+function showActivationCodesDialog(items) {
+    openFormDialog({
+        id: 'activationCodesDialog',
+        title: '<i class="fas fa-ticket-alt"></i> รหัสเปิดใช้งาน',
+        note: 'เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — รหัสแสดงครั้งเดียว กรุณาจดหรือคัดลอกก่อนปิด',
+        submitLabel: 'ปิด',
+        cancellable: false,
+        body: `<div class="temp-password" style="display:block; max-height: 50vh; overflow:auto">${items.map(i =>
+            `<div><code>${escapeHtml(i.code)}</code> ${escapeHtml(i.psCode)} ${escapeHtml(i.name)}</div>`).join('')}</div>`,
+        onSubmit: async () => {}
+    });
+}
+
+/** admin: แสดงจำนวนคำขอค้างที่เมนู "จัดการผู้ใช้" */
+async function refreshAdminBadge() {
+    if (!hasRole('admin')) return;
+    try {
+        const me = await apiV2('auth.me');
+        const counts = me.pendingCounts || { registrations: 0, resets: 0 };
+        const total = counts.registrations + counts.resets;
+        document.querySelectorAll('#usersNavBtn').forEach(btn => {
+            let badge = btn.querySelector('.nav-badge');
+            if (!total) {
+                if (badge) badge.remove();
+                return;
+            }
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'nav-badge';
+                btn.appendChild(badge);
+            }
+            badge.textContent = total;
+            badge.title = `รออนุมัติ ${counts.registrations} · ขอรีเซ็ตรหัส ${counts.resets}`;
+        });
+        if (total) {
+            showNotification(`มีงานรอดำเนินการ: สมัครใหม่ ${counts.registrations} · ขอรีเซ็ตรหัส ${counts.resets}`, 'info');
+        }
+    } catch (_) { /* ไม่ขัดการใช้งาน */ }
+}

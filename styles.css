@@ -3045,3 +3045,67 @@ nav::-webkit-scrollbar { display: none; }
         flex-wrap: wrap;
     }
 }
+
+/* ===== Login help / account summary / badge ===== */
+.login-help {
+    margin-top: var(--space-4);
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    border-left: 3px solid;
+}
+.login-help p { margin: 0 0 6px; }
+.login-help-error { background: var(--color-danger-light); color: var(--color-danger-text); border-color: var(--color-danger); }
+.login-help-warning { background: var(--color-warning-light); color: var(--color-warning-text); border-color: var(--color-warning); }
+.login-help-info { background: var(--color-info-light); color: var(--color-info-text); border-color: var(--color-info); }
+.login-help-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+.account-summary { margin: var(--space-4) 0; display: flex; flex-direction: column; gap: var(--space-3); align-items: flex-start; }
+.account-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); width: 100%; }
+.account-tile {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+    font-size: 13px; color: var(--color-text-secondary);
+}
+.account-tile-value { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
+.account-tile.tone-danger .account-tile-value { color: var(--color-danger-text); }
+.account-tile.tone-warning .account-tile-value { color: var(--color-warning-text); }
+
+.user-group-select { padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: var(--color-bg); color: var(--color-text-primary); font: inherit; font-size: 13px; max-width: 180px; }
+.user-group-select.needs-value { border-color: var(--color-warning); }
+
+.nav-badge {
+    display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px;
+    border-radius: var(--radius-full); background: var(--color-danger); color: #fff;
+    font-size: 11px; line-height: 18px; text-align: center;
+}
+
+/* ===== HAD dashboard ===== */
+.had-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.had-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: var(--space-4) 0; }
+.had-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--color-text-secondary); }
+.had-filters select, .had-filters input {
+    padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: var(--color-input-bg); color: var(--color-text-primary); font: inherit; font-size: 14px;
+}
+.had-custom { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.had-custom[hidden] { display: none; }
+.had-status { font-size: 13px; color: var(--color-text-tertiary); margin-left: auto; }
+.had-tiles { margin-bottom: var(--space-4); }
+.had-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); }
+.had-grid .chart-card { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); }
+.had-grid .chart-card h3 { font-size: 15px; margin: 0 0 var(--space-3); color: var(--color-text-primary); }
+.had-wide { grid-column: 1 / -1; }
+.had-chart { position: relative; height: 280px; }
+.had-table-title { margin: var(--space-6) 0 var(--space-3); font-size: 16px; }
+.had-note { margin-top: var(--space-3); font-size: 13px; color: var(--color-text-tertiary); }
+.bar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bar-list-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--color-text-primary); }
+.bar-list-row small { color: var(--color-text-tertiary); }
+.bar-list-track { height: 6px; background: var(--color-bg-tertiary); border-radius: var(--radius-full); overflow: hidden; margin-top: 3px; }
+.bar-list-fill { height: 100%; background: var(--color-danger); border-radius: var(--radius-full); }
+
