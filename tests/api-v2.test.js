@@ -282,3 +282,11 @@ test('reports.stats hadOnly: แนวโน้ม 12 เดือนไม่�
     assert.equal(month(s.comparison.monthlyAll, '2026-10'), 2);
     assert.deepEqual(plain(s.topHadDrugs.map(d => [d.key, d.count])), [['MORPH10', 1]]);
 });
+
+test('resolveDrug: หารหัสในวงเล็บได้แม้มีข้อความต่อท้าย', () => {
+    const { env } = setup();
+    const index = env.gs.buildDrugIndex([{ drugCode: 'TMDHC1', drugName: 'TRAMADOL HCL CAP 50 MG', had: 'Regular' }]);
+    const r = plain(env.gs.resolveDrug(index, 'TRAMADOL HCL CAP 50 MG (TMDHC1) จำนวน 30 เม็ด'));
+    assert.deepEqual([r.code, r.matched], ['TMDHC1', true]);
+    assert.equal(plain(env.gs.resolveDrug(index, 'ไม่ได้พิมพ์ฉลากยา')).matched, false);
+});

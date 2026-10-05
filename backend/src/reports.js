@@ -44,6 +44,12 @@ function resolveDrug(index, text, code) {
   }
   var byName = index.byName[raw.toLowerCase()] || (index.byCode[raw.toUpperCase()]);
   if (byName) return withMatch(byName);
+  // รหัสในวงเล็บที่ไม่ได้อยู่ท้ายข้อความ เช่น "TRAMADOL ... (TMDHC1) จำนวน 30 เม็ด"
+  var groups = raw.match(/\(([^()]+)\)/g) || [];
+  for (var g = 0; g < groups.length; g++) {
+    var inner = groups[g].slice(1, -1).trim().toUpperCase();
+    if (index.byCode[inner]) return withMatch(index.byCode[inner]);
+  }
   return { code: m ? m[2].trim() : '', name: m ? m[1].trim() : raw, had: false, matched: false };
 
   function withMatch(d) {
