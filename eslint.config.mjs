@@ -29,8 +29,8 @@ export default [
         languageOptions: { sourceType: 'script', globals: globals.serviceworker }
     },
     {
-        // Google Apps Script (V8)
-        files: ['apps-script.js'],
+        // Google Apps Script (V8) — ทุกไฟล์แชร์ global scope เดียวกัน
+        files: ['backend/src/**/*.js'],
         languageOptions: {
             sourceType: 'script',
             globals: {
@@ -41,7 +41,9 @@ export default [
         },
         rules: {
             // ฟังก์ชันระดับบนถูกเรียกจาก runtime (doGet/doPost) หรือรันเองใน editor
-            'no-unused-vars': ['error', { vars: 'local', caughtErrors: 'none' }]
+            'no-unused-vars': ['error', { vars: 'local', caughtErrors: 'none' }],
+            // ฟังก์ชัน/ค่าคงที่ประกาศในไฟล์อื่นของโปรเจกต์เดียวกัน
+            'no-undef': 'off'
         }
     },
     {

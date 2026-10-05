@@ -72,7 +72,8 @@ test('login สำเร็จได้ token และไม่ส่ง id13/p
     const { env } = setup();
     const res = login(env, 'U01', 'StrongPass#1');
     assert.equal(res.success, true);
-    assert.match(res.token, /^[0-9a-f]{64}$/);
+    assert.match(res.token, /^[\w-]+\.[\w-]+$/, 'token แบบ stateless: payload.signature');
+    assert.equal(res.expiresIn, 12 * 3600);
     assert.equal(res.user.level, 'user');
     assert.equal(res.user.id13, undefined);
     assert.equal(res.user.password, undefined);
@@ -158,12 +159,18 @@ test('ไม่มีรหัสผ่าน: 4 ตัวท้ายเลข�
     assert.equal(login(env, 'P03', '5678').success, false);
 });
 
-test('ล็อกบัญชีหลังใส่รหัสผิด 5 ครั้ง แม้รหัสถูกในครั้งที่ 6', () => {
+test('รหัสผิดติดกัน: หน่วงเวลาเพิ่มขึ้น นับตามบัญชีจริง (PS Code และ ID13 นับรวมกัน)', () => {
     const { env } = setup();
-    for (let i = 0; i < 5; i++) login(env, 'U01', 'wrong-pass');
-    const res = login(env, 'U01', 'StrongPass#1');
-    assert.equal(res.success, false);
-    assert.match(res.error, /15 นาที/);
+    assert.equal(login(env, 'U01', 'wrong-1').code, 'WRONG_CREDENTIALS');
+    assert.equal(login(env, '9990000000001', 'wrong-2').code, 'WRONG_CREDENTIALS', 'ID13 ของ U01');
+    const third = login(env, 'u01', 'wrong-3');
+    assert.equal(third.code, 'LOCKED', 'ครั้งที่ 3 → หน่วง 30 วินาที');
+    assert.ok(third.retryAfter > 0 && third.retryAfter <= 30);
+
+    const blocked = login(env, 'U01', 'StrongPass#1');
+    assert.equal(blocked.success, false, 'รหัสถูกก็ต้องรอ');
+    assert.equal(blocked.code, 'LOCKED');
+    assert.match(blocked.error, /วินาที/);
 });
 
 test('รหัสชั่วคราวจาก admin บังคับเปลี่ยน และ changePassword ตรวจรหัสอ่อน', () => {
