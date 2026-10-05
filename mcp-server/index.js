@@ -9,10 +9,14 @@ import 'dotenv/config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { loadBackend, convertRows } from '../tools/report-convert.js';
 import {
     readSheetWithHeaders,
     readSheetRaw,
     appendRow,
+    appendRowRaw,
+    setMetaValue,
+    REPORTS_SHEET,
     listSheets,
     SPREADSHEET_ID,
     SHEET_NAMES
@@ -349,6 +353,27 @@ server.tool(
 );
 
 // ==========================================
+// Reports (v2) helper
+// ==========================================
+const backend = loadBackend();
+
+/** แปลงแถวรูปแบบเดิม → Reports แล้ว append (RAW: รหัสยา "010" คงเป็นข้อความ) + ล้าง cache สถิติ */
+async function appendToReports(legacyRow) {
+    const [header, drugRows, overrideRows, userRows] = await Promise.all([
+        readSheetRaw(REPORTS_SHEET, '1:1'),
+        readSheetRaw(SHEET_NAMES.drugs, 'A2:E'),
+        readSheetRaw('Drug_Overrides', 'A2:C').catch(() => []),
+        readSheetRaw(SHEET_NAMES.users, 'A2:C')
+    ]);
+    const { reports } = convertRows(backend, { legacyRows: [legacyRow], drugRows, overrideRows, userRows });
+    const report = { ...reports[0], source: 'mcp' };
+    const columns = header[0] || backend.schema;
+    await appendRowRaw(REPORTS_SHEET, columns.map(c => (report[c] === undefined ? '' : report[c])));
+    await setMetaValue('reportsVersion', String(Date.now()));
+    return report;
+}
+
+// ==========================================
 // Tool: append_error
 // ==========================================
 server.tool(
@@ -396,6 +421,8 @@ server.tool(
             ];
 
             await appendRow(SHEET_NAMES.errors, row);
+            // v2: แอปอ่านจาก Sheet "Reports" → เขียนรายงานแบบมีโครงสร้าง (รหัสยา + HAD) ด้วย
+            const v2 = await appendToReports(row);
 
             return {
                 content: [{
@@ -406,8 +433,9 @@ server.tool(
                         `📅 วันที่: ${data.eventDate}`,
                         `🔧 กระบวนการ: ${data.process}`,
                         `👤 รายงานโดย: ${data.reporter}`,
-                        `⏰ Timestamp: ${timestamp}`
-                    ].join('\n')
+                        `⏰ Timestamp: ${timestamp}`,
+                        v2.isHad ? `⚠️ เกี่ยวข้องกับยา HAD: ${v2.hadDrugCodes}` : ''
+                    ].filter(Boolean).join('\n')
                 }]
             };
         } catch (err) {

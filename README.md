@@ -11,7 +11,7 @@
 | ข้อมูล | Google Sheets | `Reports` (หลัก), `Users`, `Drug_List`, `Drug_Overrides`, `Activations`, `Password_Resets`, `Audit_Log`, `Meta` |
 | รายการยา | `tools/sync-drugs.js` → `drug_list.json` + Sheet `Drug_List` | ดึงจาก HOSxP (MySQL) |
 | Migration | `tools/migrate-reports.js` | ย้ายรายงานจาก `Predispensing_Errors` → `Reports` (ทำแล้ว 5 ต.ค. 2569) |
-| MCP | `mcp-server/` | ให้ Claude Desktop อ่าน Sheet (รันในเครื่อง admin เท่านั้น) |
+| MCP | `mcp-server/` | ให้ Claude Desktop อ่าน Sheet และบันทึกรายงาน (`append_error` เขียนทั้ง `Reports` และ Sheet เดิม) — รันในเครื่อง admin เท่านั้น |
 
 `Predispensing_Errors` ยังถูกเขียนคู่กับ `Reports` (mirror รูปแบบเดิม สำหรับคนที่เปิดดู Sheet และ `mcp-server`)
 — แหล่งข้อมูลหลักของแอปคือ `Reports`

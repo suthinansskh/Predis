@@ -148,3 +148,34 @@ export async function listSheets() {
         colCount: s.properties.gridProperties?.columnCount
     }));
 }
+
+export const REPORTS_SHEET = 'Reports';
+
+/** append แบบ RAW (ไม่แปลงชนิด: "010" คงเป็นข้อความ) */
+export async function appendRowRaw(sheetName, values) {
+    const sheets = getSheetsClient();
+    await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A1`,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: [values] }
+    });
+}
+
+/** ตั้งค่าใน Sheet Meta (key/value) — เช่น reportsVersion เพื่อล้าง cache สถิติของแอป */
+export async function setMetaValue(key, value) {
+    const sheets = getSheetsClient();
+    const rows = (await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Meta!A2:B' })).data.values || [];
+    const index = rows.findIndex(r => r[0] === key);
+    if (index === -1) {
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID, range: 'Meta!A:B', valueInputOption: 'RAW', requestBody: { values: [[key, value]] }
+        });
+    } else {
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID, range: `Meta!B${index + 2}`, valueInputOption: 'RAW', requestBody: { values: [[value]] }
+        });
+    }
+}
+
