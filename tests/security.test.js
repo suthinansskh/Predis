@@ -176,3 +176,18 @@ test('users.list ไม่ส่ง hash และปิดเลขบัตร
     assert.equal(env.v2('reports.list', {}, userToken).error.code, 'AUTH_REQUIRED', 'session ถูกยกเลิก');
     assert.equal(login('U01', 'StrongPass#1').error.code, 'DISABLED');
 });
+
+test('ชื่อภาษาไทยของผู้รายงานไม่เสีย (token UTF-8) และใช้ชื่อล่าสุดจาก Users', () => {
+    const { env, tokenOf } = setup();
+    env.sheets.Users.appendRow(['P13', '', 'ภญ.ทดสอบ ภาษาไทย', 'เภสัชกร', 'pharmacist', '', env.gs.hashPassword('ThaiName#123'), true]);
+    const token = tokenOf('P13', 'ThaiName#123');
+    assert.equal(env.v2('auth.me', {}, token).data.user.name, 'ภญ.ทดสอบ ภาษาไทย', 'ชื่อใน token');
+
+    env.v2('reports.create', { ...REPORT }, token);
+    assert.equal(env.sheets.Predispensing_Errors.rows[1][11], 'ภญ.ทดสอบ ภาษาไทย (P13) - เภสัชกร/pharmacist');
+
+    // admin แก้ชื่อใน Sheet → รายงานใหม่ใช้ชื่อใหม่แม้ token เดิมยังใช้อยู่
+    env.sheets.Users.rows.find(r => r[0] === 'P13')[2] = 'ภญ.ชื่อใหม่ หลังแก้';
+    env.v2('reports.create', { ...REPORT }, token);
+    assert.match(env.sheets.Predispensing_Errors.rows[2][11], /^ภญ\.ชื่อใหม่ หลังแก้ \(P13\)/);
+});

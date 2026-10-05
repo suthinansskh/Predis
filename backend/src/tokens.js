@@ -41,13 +41,17 @@ function tokenSecret() {
   return secret;
 }
 
+// ต้องระบุ UTF-8: ค่าเริ่มต้นของ Apps Script แปลงอักษรไทยเป็น "?" (ชื่อผู้รายงานใน token เสีย)
 function base64UrlEncode(data) {
-  return Utilities.base64EncodeWebSafe(data).replace(/=+$/, '');
+  var encoded = typeof data === 'string'
+    ? Utilities.base64EncodeWebSafe(data, Utilities.Charset.UTF_8)
+    : Utilities.base64EncodeWebSafe(data);
+  return encoded.replace(/=+$/, '');
 }
 
 function base64UrlDecodeToString(text) {
   var padded = text + '===='.slice((text.length % 4) || 4);
-  return Utilities.newBlob(Utilities.base64DecodeWebSafe(padded)).getDataAsString();
+  return Utilities.newBlob(Utilities.base64DecodeWebSafe(padded)).getDataAsString('UTF-8');
 }
 
 function tokenSignature(body) {

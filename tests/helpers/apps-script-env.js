@@ -79,8 +79,11 @@ function createEnv({ sheets = {}, now, fileOrder = 'sorted' } = {}) {
             computeHmacSha256Signature(value, key) {
                 return toSigned(crypto.createHmac('sha256', Buffer.from(String(key), 'utf8')).update(String(value), 'utf8').digest());
             },
-            base64EncodeWebSafe(data) {
-                const buf = Array.isArray(data) ? Buffer.from(data.map(b => b & 0xff)) : Buffer.from(String(data), 'utf8');
+            base64EncodeWebSafe(data, charset) {
+                // เหมือน Apps Script: string ที่ไม่ระบุ charset → อักษรนอก ASCII กลายเป็น "?"
+                const text = String(data);
+                const buf = Array.isArray(data) ? Buffer.from(data.map(b => b & 0xff))
+                    : charset === 'utf8' ? Buffer.from(text, 'utf8') : Buffer.from(text.replace(/[^\t\n\r -~]/g, '?'), 'latin1');
                 return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
             },
             base64DecodeWebSafe(text) {

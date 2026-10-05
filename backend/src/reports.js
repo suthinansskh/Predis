@@ -231,6 +231,19 @@ function readAllReports() {
     .map(function(row) { return reportFromLegacyRow(row, index, formatBangkokDate); });
 }
 
+/** {psCode, name, group, level} ของผู้ใช้จาก Sheet Users (fallback = session) */
+function reporterProfile(session) {
+  var found = findUserRow(session.psCode);
+  if (!found) return session;
+  var row = found.row;
+  return {
+    psCode: String(row[0]).trim(),
+    name: String(row[2] || session.name || '').trim(),
+    group: String(row[3] || session.group || '').trim(),
+    level: String(row[4] || session.level || '').trim()
+  };
+}
+
 function generateServerReportId() {
   var stamp = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyMMddHHmmss');
   return 'PE' + stamp + ('0' + Math.floor(Math.random() * 100)).slice(-2);
@@ -288,6 +301,8 @@ function createReport(session, p) {
   var location = String(p.location).trim();
   var substation = location === SUBSTATION_PREFIX ? String(p.substation || '').trim() : '';
 
+  // ชื่อ/กลุ่มผู้รายงานจาก Sheet Users (ข้อมูลล่าสุด) — ไม่ใช้ค่าใน token ซึ่งอาจเก่าหรือเสีย
+  var reporter = reporterProfile(session);
   var report = {
     id: '',
     eventDate: eventDate,
@@ -297,8 +312,8 @@ function createReport(session, p) {
     incorrectDrugCode: incorrect.code, incorrectDrugName: incorrect.name,
     isHad: hadCodes.length > 0, hadDrugCodes: hadCodes.join(','),
     cause: String(p.cause), details: String(p.details || ''),
-    reporterPsCode: session.psCode, reporterName: session.name,
-    reporterLabel: formatReporter(session),
+    reporterPsCode: reporter.psCode, reporterName: reporter.name,
+    reporterLabel: formatReporter(reporter),
     createdAt: Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm:ss'),
     submissionToken: String(p.submissionToken || ''),
     source: 'v2'
