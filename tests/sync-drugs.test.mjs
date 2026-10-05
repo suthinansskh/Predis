@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toDrug, diffDrugs } from '../tools/sync-drugs.js';
 
-test('toDrug แปลงแถว HOSxP และรวมบรรทัดใหม่ในชื่อยา', () => {
+test('toDrug แปลงแถว HOSxP, รวมบรรทัดใหม่ในชื่อยา และไม่ใช้ธง HAD ของ HOSxP', () => {
     const drug = toDrug({
         itemcode: ' FCNS1 ', Name: 'Flecainide syrup(ยาผลิต,\r\nอายุ 7 วัน)', ItemType: 'ITEM_IN1',
         high_alert_drug: 1, no_use: 0, UnitName: 'ขวด', strength: null, dosage_form: undefined,
@@ -10,7 +10,7 @@ test('toDrug แปลงแถว HOSxP และรวมบรรทัดใ
     });
     assert.deepEqual(drug, {
         drugCode: 'FCNS1', drugName: 'Flecainide syrup(ยาผลิต, อายุ 7 วัน)', group: 'ITEM_IN1',
-        had: 'High', status: 'Active', unit: 'ขวด', strength: '', dosageForm: '', tmtCode: '123', unitPrice: 85
+        had: 'Regular', status: 'Active', unit: 'ขวด', strength: '', dosageForm: '', tmtCode: '123', unitPrice: 85
     });
 });
 

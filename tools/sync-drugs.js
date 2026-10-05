@@ -56,7 +56,9 @@ export function toDrug(row) {
         drugCode: clean(row.itemcode),
         drugName: clean(row.Name),
         group: row.ItemType || '',
-        had: row.high_alert_drug === 1 ? 'High' : 'Regular',
+        // ธง high_alert_drug ของ HOSxP ไม่ตรงกับรายการ HAD ของห้องยา (ติดธงยาหยอดตา/วัสดุทำแผล
+        // แต่ไม่ติดอินซูลิน/มอร์ฟีน) → HAD มาจาก Drug_Overrides ที่เภสัชกรกำหนดในแอปเท่านั้น
+        had: 'Regular',
         status: String(row.no_use) === '0' ? 'Active' : 'Inactive',
         unit: clean(row.UnitName),
         strength: clean(row.strength),
@@ -175,10 +177,14 @@ async function writeToGoogleSheets(drugs) {
 async function main() {
     let drugs = await fetchFromMySQL();
 
-    if (writeToSheets) {
+    // HAD/สถานะจากแอปต้องอยู่ทั้งใน Sheet และ drug_list.json (ไฟล์สำรองออฟไลน์)
+    try {
         const result = applyOverrides(drugs, await readDrugOverrides());
         drugs = result.drugs;
         console.log(`Applied ${result.applied} HAD/status overrides from Drug_Overrides`);
+    } catch (error) {
+        if (writeToSheets) throw error;
+        console.warn(`WARNING: อ่าน Drug_Overrides ไม่ได้ (${error.message}) — drug_list.json จะไม่มีข้อมูล HAD`);
     }
 
     const { added, removed, changed } = diffDrugs(await readCurrentDrugs(), drugs);
