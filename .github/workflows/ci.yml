@@ -21,15 +21,23 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             tools/package-lock.json
+            frontend/package-lock.json
 
       - run: npm ci
       - run: npm ci --prefix tools
+      - run: npm ci --prefix frontend
 
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      - name: Backend tests
         run: npm test
+
+      - name: Frontend tests
+        run: npm run test:frontend
+
+      - name: Build frontend
+        run: npm run build
 
       # กันข้อมูลบุคลากร/credential หลุดเข้า repo public อีก
       - name: Block PII and secrets
@@ -37,6 +45,6 @@ jobs:
           if git ls-files | grep -Ei '(^|/)(sample_users|.*users)\.csv$|(^|/)\.env$|credentials\.json$'; then
             echo "::error::PII/credential file is tracked"; exit 1
           fi
-          if git grep -nE '\b[0-9]{13}\b' -- '*.js' '*.html' '*.csv' ':!tests/**' ':!drug_list.json' | grep -vE '0{6,}'; then
+          if git grep -nE '\b[0-9]{13}\b' -- '*.js' '*.vue' '*.html' '*.csv' ':!tests/**' ':!drug_list.json' | grep -vE '0{6,}'; then
             echo "::error::Possible Thai national ID (13 digits) in source"; exit 1
           fi

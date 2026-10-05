@@ -9,38 +9,6 @@ function toActive(value) {
   return value === true || value === 'TRUE' || value === 'true' || value == 1 || value === 'Active';
 }
 
-// Get drugs from Drug_List sheet (public GET)
-function getDrugsFromSheet() {
-  try {
-    var drugSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(DRUG_SHEET);
-    if (!drugSheet) {
-      return jsonResponse({ success: true, data: [], message: 'ไม่พบ Sheet "' + DRUG_SHEET + '"' });
-    }
-
-    var values = drugSheet.getDataRange().getValues();
-    var overrides = getDrugOverrides();
-    var drugs = values.slice(1).map(function(row) {
-      return applyDrugOverride({
-        code: row[0] || '',
-        name: row[1] || '',
-        group: row[2] || '',
-        had: toHadLabel(row[3]),
-        status: toActive(row[4]),
-        unit: row[5] || '',
-        strength: row[6] || '',
-        dosageForm: row[7] || '',
-        tmtCode: row[8] || '',
-        unitPrice: row[9] || 0
-      }, overrides);
-    }).filter(function(drug) { return drug.code && drug.status; });
-
-    return jsonResponse({ success: true, data: drugs, count: drugs.length, timestamp: new Date().toISOString() });
-
-  } catch (error) {
-    return jsonResponse({ success: false, error: 'Error getting drug list: ' + error.toString() });
-  }
-}
-
 function drugCodeKey(code) {
   // ตัด ' นำหน้า (ใช้บังคับให้ Sheets เก็บเป็นข้อความ)
   return String(code === null || code === undefined ? '' : code).trim().replace(/^'/, '').toUpperCase();

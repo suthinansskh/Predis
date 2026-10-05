@@ -3,30 +3,13 @@ import globals from 'globals';
 
 export default [
     {
-        ignores: ['**/node_modules/**']
+        ignores: ['**/node_modules/**', 'frontend/dist/**']
     },
     js.configs.recommended,
     {
-        // Frontend: classic scripts ที่แชร์ global ข้ามไฟล์ และถูกเรียกจาก onclick ใน HTML
-        // จึงปิด no-undef / no-unused-vars (จะผิดพลาดทั้งหมดในโครงสร้างแบบนี้)
-        files: ['js/**/*.js'],
-        languageOptions: {
-            ecmaVersion: 2022,
-            sourceType: 'script',
-            globals: { ...globals.browser, Chart: 'readonly' }
-        },
-        rules: {
-            'no-undef': 'off',
-            'no-unused-vars': 'off',
-            'no-redeclare': 'off',
-            'no-empty': ['error', { allowEmptyCatch: true }],
-            // โค้ดเดิมใช้รูปแบบ `let score = 0;` แล้วกำหนดค่าใหม่ — ไม่ใช่บั๊ก
-            'no-useless-assignment': 'off'
-        }
-    },
-    {
-        files: ['sw.js'],
-        languageOptions: { sourceType: 'script', globals: globals.serviceworker }
+        // Frontend v2 (Vue 3, ES modules) — ไฟล์ .vue ตรวจโดย vite build + vitest
+        files: ['frontend/src/**/*.js', 'frontend/scripts/**/*.js', 'frontend/vite.config.js'],
+        languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: { ...globals.browser, ...globals.node } }
     },
     {
         // Google Apps Script (V8) — ทุกไฟล์แชร์ global scope เดียวกัน

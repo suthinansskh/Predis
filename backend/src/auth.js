@@ -151,32 +151,6 @@ function authenticate(userCode, password) {
   return { ok: true, user: user, mustChangePassword: mustChangePassword };
 }
 
-/**
- * API เดิม: ตรวจสอบ credentials แล้วออก token
- * @param {string} userCode - PS Code หรือ ID13
- * @param {string} password - รหัสผ่าน
- */
-function loginUser(userCode, password) {
-  try {
-    var result = authenticate(userCode, password);
-    if (!result.ok) {
-      return jsonResponse({ success: false, code: result.code, error: result.message, retryAfter: result.retryAfter });
-    }
-    return jsonResponse({
-      success: true,
-      user: result.user,
-      token: createSession(result.user),
-      expiresIn: TOKEN_TTL_MS / 1000,
-      mustChangePassword: result.mustChangePassword,
-      message: 'เข้าสู่ระบบสำเร็จ',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error in loginUser:', error);
-    return jsonResponse({ success: false, error: 'เกิดข้อผิดพลาดในการตรวจสอบผู้ใช้: ' + error.toString() });
-  }
-}
-
 function registerUser(data) {
   try {
     if (rateLimited('reg:global', REGISTER_MAX_PER_HOUR, 60 * 60)) {

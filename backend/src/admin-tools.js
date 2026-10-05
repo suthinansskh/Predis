@@ -8,34 +8,6 @@ function auditWeakPasswords() {
   return weak;
 }
 
-// ออกรหัสผ่านชั่วคราวแบบสุ่มให้ทุกคนที่ยังใช้รหัสอ่อน/รหัสเริ่มต้น
-// ผลลัพธ์อยู่ใน Sheet "Temp_Passwords" — แจกให้ผู้ใช้เป็นรายบุคคล แล้ว "ลบ Sheet นั้นทิ้ง"
-// ผู้ใช้จะถูกบังคับให้เปลี่ยนรหัสผ่านเมื่อ login ครั้งแรก
-function forceResetWeakPasswords() {
-  var weak = auditWeakPasswords();
-  var spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var userSheet = spreadsheet.getSheetByName(USER_SHEET);
-  var lastRow = userSheet.getLastRow();
-  var rows = userSheet.getRange(2, 1, lastRow - 1, 3).getValues();
-  var props = PropertiesService.getScriptProperties();
-  var issued = [['PS Code', 'ชื่อ', 'รหัสผ่านชั่วคราว']];
-
-  rows.forEach(function(row, i) {
-    var psCode = (row[0] || '').toString().trim();
-    if (weak.indexOf(psCode) === -1) return;
-    var temp = generateTempPassword();
-    userSheet.getRange(i + 2, 7).setValue(hashPassword(temp));
-    props.setProperty(mustChangeKey(psCode), '1');
-    issued.push([psCode, row[2], temp]);
-  });
-
-  var out = spreadsheet.getSheetByName('Temp_Passwords') || spreadsheet.insertSheet('Temp_Passwords');
-  out.clear();
-  out.getRange(1, 1, issued.length, 3).setValues(issued);
-  logAuditEvent('FORCE_RESET_WEAK', 'admin', (issued.length - 1) + ' users');
-  return issued.length - 1;
-}
-
 // Run once in Apps Script editor to hash any remaining plain-text passwords.
 function migrateUsersToHashedPasswords() {
   var userSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(USER_SHEET);

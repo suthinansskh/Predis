@@ -100,3 +100,7 @@ tools/credentials.json
 # ข้อมูลบุคลากรจริง (PII) — ห้าม commit
 sample_users.csv
 *.users.csv
+
+# Frontend build
+frontend/dist/
+frontend/public/drug_list.json

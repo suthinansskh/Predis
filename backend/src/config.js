@@ -12,12 +12,6 @@ const DRUG_OVERRIDE_SHEET = 'Drug_Overrides';
 
 const USER_SHEET = 'Users';
 
-const SESSION_TTL_SECONDS = 6 * 60 * 60; // CacheService max = 6 ชั่วโมง
-
-const LOGIN_MAX_FAILURES = 5;
-
-const LOGIN_LOCK_SECONDS = 15 * 60;
-
 const PASSWORD_MIN_LENGTH = 8;
 
 const PASSWORD_ITERATIONS = 1000; // Apps Script ไม่มี PBKDF2 — วน SHA-256 แทน
@@ -26,19 +20,8 @@ const PASSWORD_ITERATIONS = 1000; // Apps Script ไม่มี PBKDF2 — ว�
 const WEAK_PASSWORDS = ['@12345', '12345', '123456', '1234', 'password', 'Admin@1234'];
 
 // true = ปฏิเสธการ login ด้วยรหัสอ่อน/รหัสเริ่มต้น เพราะผู้อื่นรู้รหัสนี้แล้ว
-// ผู้ใช้ต้องขอรหัสชั่วคราวจาก admin (ดู forceResetWeakPasswords)
+// ผู้ใช้ต้องใช้รหัสเปิดใช้งานจาก admin (ดู activation.js)
 const BLOCK_WEAK_PASSWORD_LOGIN = true;
-
-const ROLE_ACTIONS = {
-  addDrug: ['admin', 'supervisor', 'pharmacist'],
-  updateDrug: ['admin', 'supervisor', 'pharmacist'],
-  replaceDrugList: ['admin'],
-  listUsers: ['admin'],
-  approveUser: ['admin'],
-  rejectUser: ['admin'],
-  updateUser: ['admin'],
-  adminResetPassword: ['admin']
-};
 
 const USER_LEVELS = ['user', 'pharmacist', 'supervisor', 'admin'];
 
@@ -59,11 +42,6 @@ const USER_HEADER = ['PS Code', 'ID 13 หลัก', 'ชื่อ-นามส
 const REGISTER_MAX_PER_HOUR = 30;
 
 const RESET_REQUEST_COOLDOWN_SECONDS = 60 * 60;
-
-// ช่วงเปลี่ยนผ่าน: client เวอร์ชันเก่า (cache ใน Service Worker) ยังไม่ส่ง token
-// และจะแสดง "บันทึกสำเร็จ" แม้ server ปฏิเสธ → ยอมรับ append แบบไม่มี token ชั่วคราว
-// เพื่อไม่ให้รายงานหาย (บันทึก Audit_Log ทุกครั้ง) — ลบทิ้งหลังวันที่นี้
-const LEGACY_APPEND_UNTIL = new Date('2026-10-08T00:00:00+07:00');
 
 // ===== v2 =====
 

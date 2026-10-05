@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="description" content="บันทึกและวิเคราะห์ความคลาดเคลื่อนก่อนจ่ายยา (Predispensing Error)">
+    <title>Predispensing Error Recorder</title>
+    <link rel="icon" type="image/x-icon" href="./favicon.ico">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // ลิงก์เดิม index.html#druglist / #users / #settings → route ใหม่
+        (function () {
+            var map = { '#druglist': '#/drugs', '#users': '#/users', '#settings': '#/users' };
+            if (map[location.hash]) location.replace(location.pathname + map[location.hash]);
+        })();
+        // ตั้งธีมก่อน render (กันจอกระพริบ)
+        try {
+            var theme = localStorage.getItem('predisTheme');
+            if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) { /* storage blocked */ }
+    </script>
+</head>
+<body>
+    <div id="app"></div>
+    <noscript>กรุณาเปิดใช้งาน JavaScript</noscript>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

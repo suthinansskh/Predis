@@ -1,10 +1,6 @@
 // Session token (HMAC แบบ stateless + legacy CacheService) และการยกเลิกรายคน
 // Apps Script: ทุกไฟล์ใน backend/src แชร์ global scope เดียวกัน
 
-function sessionKey(token) {
-  return 'sess:' + token;
-}
-
 function revokedKey(psCode) {
   return 'revokedAt:' + String(psCode).trim().toLowerCase();
 }
@@ -14,39 +10,17 @@ function revokeUserSessions(psCode) {
   PropertiesService.getScriptProperties().setProperty(revokedKey(psCode), String(Date.now()));
 }
 
-// token ใหม่เป็นแบบ stateless เสมอ (คงชื่อเดิมไว้ให้ code เดิมเรียกได้)
-function createSession(user) {
-  return signToken(user);
-}
-
 // คืนค่า session (และต่ออายุ) หรือ null ถ้า token ไม่ถูกต้อง/หมดอายุ
+// คืน session จาก token (stateless HMAC) หรือ null
 function getSession(token) {
-  if (typeof token === 'string' && token.indexOf('.') !== -1) return verifyToken(token);
-  // token แบบเดิม (CacheService) — ใช้ได้จนหมดอายุ
-  if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
-  var cache = CacheService.getScriptCache();
-  var raw = cache.get(sessionKey(token));
-  if (!raw) return null;
-  var session = JSON.parse(raw);
-  var revokedAt = parseInt(PropertiesService.getScriptProperties().getProperty(revokedKey(session.psCode)) || '0', 10);
-  if (revokedAt && (session.issuedAt || 0) < revokedAt) {
-    cache.remove(sessionKey(token));
-    return null;
-  }
-  cache.put(sessionKey(token), raw, SESSION_TTL_SECONDS);
-  return session;
+  return typeof token === 'string' && token.indexOf('.') !== -1 ? verifyToken(token) : null;
 }
 
 // logout: token แบบ stateless ยกเลิกทีละใบไม่ได้ → ยกเลิกทุก session ของผู้ใช้คนนั้น
 // (เหมาะกับเครื่องในห้องยาที่ใช้ร่วมกัน)
 function destroySession(token) {
-  if (typeof token !== 'string' || !token) return;
-  if (token.indexOf('.') !== -1) {
-    var session = verifyToken(token);
-    if (session) revokeUserSessions(session.psCode);
-    return;
-  }
-  CacheService.getScriptCache().remove(sessionKey(token));
+  var session = getSession(token);
+  if (session) revokeUserSessions(session.psCode);
 }
 
 function formatReporter(session) {

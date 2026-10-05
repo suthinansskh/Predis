@@ -164,6 +164,19 @@ function isTrue(v) {
   return v === true || v === 'TRUE' || v === 'true';
 }
 
+/** ค้นหาข้อความ (ทุกคำต้องพบ) ใน id/ยา/ข้อผิดพลาด/สาเหตุ — ชื่อผู้รายงานและรายละเอียดเฉพาะที่ role เห็นได้ */
+function searchReports(reports, q, session) {
+  var terms = String(q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return reports;
+  return reports.filter(function(r) {
+    var visible = redactReport(r, session);
+    var text = [visible.id, visible.correctDrugCode, visible.correctDrugName, visible.incorrectDrugCode, visible.incorrectDrugName,
+      visible.errorDetail, visible.cause, visible.process, visible.location, visible.substation, visible.details, visible.reporterName]
+      .join(' ').toLowerCase();
+    return terms.every(function(t) { return text.indexOf(t) !== -1; });
+  });
+}
+
 /** ระดับ user: รายงานของคนอื่นไม่แสดงชื่อผู้รายงานและรายละเอียดเพิ่มเติม */
 function redactReport(r, session) {
   if (FULL_REPORT_ACCESS.indexOf(session.level) !== -1) return r;
@@ -306,10 +319,10 @@ function createReport(session, p) {
 function listReports(session, p) {
   var page = Math.max(1, parseInt(p.page || '1', 10) || 1);
   var pageSize = Math.min(200, Math.max(1, parseInt(p.pageSize || '50', 10) || 50));
-  var filtered = sortReportsDesc(filterReports(readAllReports(), {
+  var filtered = sortReportsDesc(searchReports(filterReports(readAllReports(), {
     from: p.from, to: p.to, process: p.process, patientType: p.patientType, location: p.location,
     hadOnly: isTrue(p.hadOnly), mine: isTrue(p.mine), psCode: session.psCode
-  }));
+  }), p.q, session));
   var items = filtered.slice((page - 1) * pageSize, page * pageSize)
     .map(function(r) { return publicReport(redactReport(r, session)); });
   return { ok: true, data: { items: items, total: filtered.length, page: page, pageSize: pageSize } };

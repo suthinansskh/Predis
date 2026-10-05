@@ -144,29 +144,4 @@ function updateUser(session, psCode, level, active, group) {
   return jsonResponse({ success: true, message: 'บันทึกการเปลี่ยนแปลงของ ' + psCode + ' แล้ว' });
 }
 
-// ออกรหัสผ่านชั่วคราว — ส่งกลับครั้งเดียวให้ admin แจ้งผู้ใช้ด้วยตนเอง
-function adminResetPassword(session, psCode) {
-  var found = findUserRow(psCode);
-  if (!found) {
-    return jsonResponse({ success: false, error: 'ไม่พบผู้ใช้' });
-  }
-
-  var temp = generateTempPassword();
-  found.sheet.getRange(found.rowNumber, COL.PASSWORD).setValue(hashPassword(temp));
-  PropertiesService.getScriptProperties().setProperty(mustChangeKey(found.row[0]), '1');
-  revokeUserSessions(found.row[0]);
-  CacheService.getScriptCache().remove(loginFailureKey(String(found.row[0]).trim().toLowerCase()));
-
-  var resetSheet = getResetSheet();
-  var resetRows = resetSheet.getDataRange().getValues();
-  for (var i = 1; i < resetRows.length; i++) {
-    if (resetRows[i][1] === found.row[0] && resetRows[i][3] === 'PENDING') {
-      resetSheet.getRange(i + 1, 4, 1, 3).setValues([['DONE', session.psCode, nowText()]]);
-    }
-  }
-
-  logAuditEvent('ADMIN_RESET_PASSWORD', session.psCode, String(found.row[0]));
-  return jsonResponse({ success: true, psCode: String(found.row[0]), name: String(found.row[2]), tempPassword: temp });
-}
-
 // ===== Change Password =====

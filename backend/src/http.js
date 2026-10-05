@@ -28,26 +28,4 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function authError(message) {
-  return jsonResponse({ success: false, authRequired: true, error: message || 'กรุณาเข้าสู่ระบบใหม่' });
-}
-
-function parsePostData(e) {
-  var params = (e && e.parameter) ? e.parameter : {};
-  var postContents = (e && e.postData && e.postData.contents) ? e.postData.contents : '';
-
-  if (params.payload) return JSON.parse(params.payload);
-  if (params.action) return params;
-  if (!postContents) return null;
-  try {
-    return JSON.parse(postContents);
-  } catch (parseErr) {
-    // application/x-www-form-urlencoded เช่น payload=%7B...%7D
-    if (postContents.indexOf('payload=') === 0) {
-      return JSON.parse(decodeURIComponent(postContents.substring(8).replace(/\+/g, ' ')));
-    }
-    return params;
-  }
-}
-
 // ===== HTTP Handlers =====

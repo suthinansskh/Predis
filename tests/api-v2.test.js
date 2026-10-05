@@ -169,21 +169,6 @@ test('reports.create: เติมรหัสยา/HAD ฝั่ง server, �
     assert.equal(env.sheets.Predispensing_Errors.rows[2][4], 'รพ.สต.แทง', 'Sheet เดิมเก็บแบบเดิม');
 });
 
-test('compat append (frontend เดิม) เขียนลง Reports ด้วยเมื่อ migrate แล้ว', () => {
-    const { env } = setup();
-    env.gs.setMeta('reportsMigrated', 'true');
-    const token = env.post({ action: 'login', userCode: 'U01', password: 'UserPass#11' }).token;
-    const res = env.post({ action: 'append', token, eventDate: '2026-10-02', reportId: 'PE-OLD-1', shift: 'บ่าย',
-        errorType: 'ผู้ป่วยใน', location: 'รพ.สต.แทง', process: 'จัดยา', errorDetail: 'x', correctItem: 'BCG vaccine (010)',
-        incorrectItem: 'Morphine 10 mg', cause: 'y', submissionToken: 's1' });
-    assert.equal(res.success, true);
-    const r = env.gs.Table('Reports').findBy('id', 'PE-OLD-1');
-    assert.equal(r.correctDrugCode, '010');
-    assert.equal(r.incorrectDrugCode, 'MORPH10', 'จับคู่จากชื่อยา');
-    assert.equal(r.isHad, true);
-    assert.equal(r.reporterPsCode, 'U01');
-    assert.deepEqual([r.location, r.substation], ['รพ.สต.', 'รพ.สต.แทง']);
-});
 
 test('reports.list: กรอง/แบ่งหน้า/redaction ตาม role (อ่านจาก Sheet เดิมก่อน migrate)', () => {
     const { env, tokenOf } = setup();
@@ -289,4 +274,16 @@ test('resolveDrug: หารหัสในวงเล็บได้แม้�
     const r = plain(env.gs.resolveDrug(index, 'TRAMADOL HCL CAP 50 MG (TMDHC1) จำนวน 30 เม็ด'));
     assert.deepEqual([r.code, r.matched], ['TMDHC1', true]);
     assert.equal(plain(env.gs.resolveDrug(index, 'ไม่ได้พิมพ์ฉลากยา')).matched, false);
+});
+
+test('reports.list q: ค้นหาข้อความ แต่ไม่ค้นในข้อมูลที่ role มองไม่เห็น', () => {
+    const { env, tokenOf } = setup();
+    const legacy = env.sheets.Predispensing_Errors;
+    legacy.appendRow(['2026-09-01', 'R1', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดชนิด', 'BCG vaccine (010)', '', 'c', 'ลับเฉพาะ', 'ชื่อ P01 (P01) - เภสัชกร/pharmacist', 't']);
+    legacy.appendRow(['2026-09-02', 'R2', 'เช้า', 'ผู้ป่วยนอก', 'OPD', 'จัดยา', 'จัดผิดขนาด', 'Morphine 10 mg (MORPH10)', '', 'c', '', 'ชื่อ U01 (U01) - เภสัชกร/user', 't']);
+    const user = tokenOf('U01', 'UserPass#11');
+    assert.deepEqual(plain(env.v2('reports.list', { q: 'morphine' }, user).data.items.map(r => r.id)), ['R2']);
+    assert.deepEqual(plain(env.v2('reports.list', { q: 'จัดผิด bcg' }, user).data.items.map(r => r.id)), ['R1']);
+    assert.equal(env.v2('reports.list', { q: 'ลับเฉพาะ' }, user).data.total, 0, 'user ค้นในรายละเอียดของคนอื่นไม่ได้');
+    assert.equal(env.v2('reports.list', { q: 'ลับเฉพาะ' }, tokenOf('P01', 'PharmPass#11')).data.total, 1);
 });
